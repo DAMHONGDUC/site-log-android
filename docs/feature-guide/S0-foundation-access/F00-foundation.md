@@ -445,3 +445,214 @@ ij_kotlin_allow_trailing_comma = true
 ij_kotlin_allow_trailing_comma_on_call_site = true
 ktlint_function_signature_rule_force_multiline_when_parameter_count_greater_or_equal_than = 3
 ktlint_function_naming_ignore_when_annotated_with = Composable
+# Keep `class X @Inject constructor(` and explicit `return` (beginner-friendly guide code)
+ktlint_standard_class-signature = disabled
+ktlint_standard_function-expression-body = disabled
+
+[*.{yml,yaml,toml,json}]
+indent_size = 2
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `build.gradle.kts` (root)
+Declares plugins once (`apply false`) and runs Spotless and detekt over every module.
+
+- Spotless does **not** take ktlint rules from `.editorconfig`: pass them with `editorConfigOverride`, or ktlint falls back to `ktlint_official`.
+- `android_studio` style matches Android Studio's formatter, so Format on Save and CI agree.
+- Two ktlint rules are off on purpose: `class-signature` would split `class X @Inject constructor(` over four lines and re-indent the class, and `function-expression-body` would turn every `return when` into `= when` — both against the beginner style of the guides.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+plugins {
+    alias(libs.plugins.android.application) apply false
+    alias(libs.plugins.android.library) apply false
+    alias(libs.plugins.kotlin.jvm) apply false
+    alias(libs.plugins.kotlin.compose) apply false
+    alias(libs.plugins.kotlin.serialization) apply false
+    alias(libs.plugins.ksp) apply false
+    alias(libs.plugins.hilt) apply false
+    alias(libs.plugins.room) apply false
+    alias(libs.plugins.detekt)
+    alias(libs.plugins.spotless)
+}
+
+val ktlintRules: Map<String, Any> = mapOf(
+    "ktlint_code_style" to "android_studio",
+    "max_line_length" to 100,
+    "ktlint_function_naming_ignore_when_annotated_with" to "Composable",
+    "ktlint_standard_class-signature" to "disabled",
+    "ktlint_standard_function-expression-body" to "disabled",
+)
+
+spotless {
+    kotlin {
+        target("**/*.kt")
+        targetExclude("**/build/**")
+        ktlint(libs.versions.ktlint.get()).editorConfigOverride(ktlintRules)
+    }
+    kotlinGradle {
+        target("**/*.kts")
+        targetExclude("**/build/**")
+        ktlint(libs.versions.ktlint.get()).editorConfigOverride(ktlintRules)
+    }
+}
+
+detekt {
+    buildUponDefaultConfig = true
+    config.setFrom(files("config/detekt/detekt.yml"))
+    source.setFrom(files(subprojects.map { "${it.projectDir}/src" }))
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `config/detekt/detekt.yml`
+The detekt rules this project changes; everything else is detekt's default.
+
+<b>Explain</b> · Defaults clash with Compose and with the error rules: composables are `PascalCase`, repositories catch `Exception` on purpose ([00 §4.6](../../feature-docs/00-overview.md#46-error-handling)), tokens are numbers, previews look unused.
+
+<details>
+<summary><b>Code</b></summary>
+
+```yaml
+naming:
+  FunctionNaming:
+    ignoreAnnotated: ['Composable']
+  TopLevelPropertyNaming:
+    constantPattern: '[A-Z][A-Za-z0-9_]*'
+
+complexity:
+  LongParameterList:
+    ignoreAnnotated: ['Composable']
+
+style:
+  # Repositories catch Exception on purpose and rethrow CancellationException (00-overview §4.6)
+  ReturnCount:
+    max: 4
+    excludeGuardClauses: true
+  MagicNumber:
+    excludes: ['**/tokens/**', '**/test/**']
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+  UnusedPrivateMember:
+    ignoreAnnotated: ['Preview']
+  ForbiddenMethodCall:
+    active: true
+    methods:
+      - 'kotlin.io.println'
+
+exceptions:
+  TooGenericExceptionCaught:
+    active: false
+  SwallowedException:
+    ignoredExceptionTypes: ['KeyPermanentlyInvalidatedException', 'CancellationException']
+```
+
+</details>
+
+- In tests use `error("…")`, not `throw IllegalStateException(…)` (`UseCheckOrError`).
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `app/src/main/java/com/dd/sitelog/SiteLogApplication.kt`
+The process entry point; Hilt starts here. Crashlytics and the logger are the first startup steps (step 1 fills them in).
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog
+
+import android.app.Application
+import dagger.hilt.android.HiltAndroidApp
+
+@HiltAndroidApp
+class SiteLogApplication : Application()
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `app/src/main/java/com/dd/sitelog/MainActivity.kt`
+The only activity: draws edge to edge and hands the screen to Compose. A `FragmentActivity` (needs `androidx.fragment`) because `BiometricPrompt` (F01) only works with one.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog
+
+import android.os.Bundle
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.fragment.app.FragmentActivity
+import com.dd.sitelog.designsystem.theme.SiteLogTheme
+import com.dd.sitelog.presentation.root.RootScreen
+import dagger.hilt.android.AndroidEntryPoint
+
+@AndroidEntryPoint
+class MainActivity : FragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            SiteLogTheme {
+                RootScreen()
+            }
+        }
+    }
+}
+```
+
+- Until step 4 and step 7 exist, put `Text("SiteLog")` inside `setContent` instead.
+
+</details>
+
+</dd></dl>
+
+</dd></dl>
+
+## 1. Modules, Hilt, AppClock, AppLogger, Outcome
+
+<dl><dd>
+
+#### Overview
+
+<dl><dd>
+
+- **Goal:** five modules with one-way dependencies, one composition root, a clock tests can fix, a logger, and the `Outcome` type every repository returns.
+
+| Module | Plugin | Holds | Depends on |
+|---|---|---|---|
+| `:domain` | `sitelog.jvm.library` | Entities, repository interfaces, use cases, `Outcome` | coroutines-core, serialization-core |
+| `:data` | `sitelog.android.library` (+ `room` later) | Repository and data source `Impl`s, models, mappers | `:domain`, `:platformkit`, `:core` |
+| `:platformkit` | `sitelog.android.library` | System services, engines | `:core` |
+| `:core` | `sitelog.android.library` | `AppClock`, `AppLogger`, crypto | nothing |
+| `:designsystem` | `sitelog.android.library` + `compose` | Tokens, theme, components | nothing |
+| `:app` | `sitelog.android.application` + `compose` + `hilt` | `di/`, `startup/`, `presentation/` | every module |
+
+```mermaid
+flowchart TD
+    App[":app"] --> Data[":data"]
+    App --> Domain[":domain"]
+    App --> DS[":designsystem"]
+    Data --> Domain
+    Data --> Kit[":platformkit"]
+    Data --> Core[":core"]
+    Kit --> Core
+    App --> Core
+```
+
+- **Check:** `./gradlew assembleDebug` is clean; adding `implementation(project(":data"))` to `:domain` fails (`:domain` is JVM and `:data` is Android); the `DeviceClock` test passes.
+- **Why:** [A01](../../feature-docs/00-overview.md#a01--hilt-for-dependency-injection), [A09](../../feature-docs/00-overview.md#a09--layers-as-gradle-modules), [A21](../../feature-docs/00-overview.md#a21--own-outcome-type).
+
+</dd></dl>
+
