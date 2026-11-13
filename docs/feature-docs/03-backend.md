@@ -259,3 +259,76 @@ POST /uploads/:id/complete { "parts": [ { "number", "etag" } ] }  (multipart)
 
 </dd></dl>
 
+## 8. Verify
+
+<dl><dd>
+
+```text
+GET /verify/K7M2QX9HTP      (no token)
+→ { "code", "sha256", "byteSize", "receivedAt", "verifyState": "registered" | "verified" | "mismatch", "verified", "verifiedAt", "projectRef" }
+```
+
+- App: print `projectRef` in the report header and the code under each photo ([01-field-work §12.5](01-field-work.md#125-verification-code)).
+
+</dd></dl>
+
+## 9. Realtime channel
+
+<dl><dd>
+
+| App → server | Server → app |
+|---|---|
+| `{"type":"auth","token":"…"}` first, within 5 s | `{"type":"snapshot","sessionID","completed":[…],"failed":[…]}` |
+| `{"type":"subscribe","sessionID":"…"}` | `{"type":"jobCompleted","jobID","remoteKey","sha256","verified"}` |
+| `{"type":"ping","at":n}` | `{"type":"jobFailed","jobID","reason"}` · `{"type":"pong","at":n}` |
+
+- Decode with a `JsonContentPolymorphicSerializer` (or `classDiscriminator = "type"`) into a sealed `RealtimeMessage`.
+- Close `4000` no auth · `4001` token (refresh, reconnect) · `4003` foreign session · `4008` too many sockets.
+
+</dd></dl>
+
+## 10. Push registration
+
+<dl><dd>
+
+- **Backend change for Android:** the iOS contract registers APNs tokens only. Android needs the server to accept FCM tokens and send through FCM (Firebase Admin `messaging().send`). Proposed contract — agree it in [site-log-be · 01-api](https://github.com/DAMHONGDUC/site-log-be/blob/main/docs/feature-docs/01-api.md) first:
+
+```text
+POST /devices { "token": "<FCM registration token>", "platform": "fcm", "environment": "production" }   → { "registered": true }
+DELETE /devices/:token                                                                                  → { "removed": true }
+```
+
+| Rule | Detail |
+|---|---|
+| `platform` | `"apns"` (iOS, default when missing) or `"fcm"` (Android) |
+| `environment` | Ignored for FCM; send `"production"` |
+| When | After sign-in, on every `onNewToken`, and remove on sign-out |
+| Payload | FCM **data** message `{ "deepLink": "sitelog://session/<id>", "account": "<uid hash>", "title", "body" }`; the app builds the notification itself so it can drop pushes for another account |
+
+</dd></dl>
+
+## 11. Shared constants
+
+<dl><dd>
+
+| Constant | Value | Android |
+|---|---|---|
+| Single-PUT threshold | 5 MiB | `UploadConstants.SINGLE_PUT_THRESHOLD_BYTES` |
+| Part size | 8 MiB | `UploadConstants.PART_SIZE_BYTES` |
+| Presigned URL lifetime | 1 h | proactive refresh before `expiresAt` |
+| Pull page | ≤ 500 | `SyncConstants.PULL_PAGE_SIZE` |
+| Push batch | ≤ 200 | `SyncConstants.PUSH_BATCH_SIZE` |
+| Tombstone retention | 90 days | `SyncConstants.TOMBSTONE_RETENTION_DAYS` |
+| WS auth timeout · max message | 5 s · 64 KiB | `RealtimeConstants.AUTH_TIMEOUT_MS` · `MAX_MESSAGE_BYTES` |
+
+</dd></dl>
+
+## 12. Testing against a local backend
+
+<dl><dd>
+
+- Run the backend on the Mac: [site-log-be · local testing](https://github.com/DAMHONGDUC/site-log-be/blob/main/docs/feature-guide/local-testing-with-ios.md) (same server; only the client address differs).
+- Debug builds allow cleartext HTTP only to `10.0.2.2`, `localhost` and (when used) the Mac's LAN address through `app/src/debug/res/xml/network_security_config.xml`; release builds allow none.
+- A real phone: same Wi-Fi as the Mac, or `adb reverse tcp:3000 tcp:3000` and use `http://localhost:3000`.
+
+</dd></dl>
