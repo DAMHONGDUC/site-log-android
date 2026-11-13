@@ -572,3 +572,125 @@ class AccessRepositoryImpl(
         }
     }
 
+    override suspend fun seedSampleData() {
+        try {
+            val model = accessLocalDataSource.loadSetting()
+            accessLocalDataSource.saveSetting(model.copy(isShowWelcomeScreen = false))
+            logger.info(LogCategory.ACCESS, "Access data seeded")
+        } catch (exception: Exception) {
+            rethrowIfCancelled(exception)
+            logger.error(LogCategory.ACCESS, "Seed access data failed", exception)
+        }
+    }
+
+    private fun rethrowIfCancelled(exception: Exception) {
+        if (exception is CancellationException) {
+            throw exception
+        }
+    }
+
+    private companion object {
+        const val FREE_TRIES: Int = 5
+        const val LOCKOUT_WAIT_MS: Long = 60_000
+    }
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `app/src/main/java/com/dd/sitelog/di/RepositoriesModule.kt` (+ `DataSourcesModule.kt`, `UseCasesModule.kt`)
+The only place that knows `AccessRepositoryImpl` and its data sources exist.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+@Module
+@InstallIn(SingletonComponent::class)
+object DataSourcesModule {
+    @Provides
+    @Singleton
+    fun accessLocalDataSource(): AccessLocalDataSource {
+        return AccessLocalDataSourceImpl()
+    }
+
+    @Provides
+    @Singleton
+    fun biometricLocalDataSource(): BiometricLocalDataSource {
+        return BiometricLocalDataSourceImpl()
+    }
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+object RepositoriesModule {
+    @Provides
+    @Singleton
+    fun accessRepository(
+        accessLocalDataSource: AccessLocalDataSource,
+        biometricLocalDataSource: BiometricLocalDataSource,
+        logger: AppLogger,
+    ): AccessRepository {
+        return AccessRepositoryImpl(
+            accessLocalDataSource = accessLocalDataSource,
+            biometricLocalDataSource = biometricLocalDataSource,
+            logger = logger,
+        )
+    }
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+object UseCasesModule {
+    // region Access
+    @Provides
+    fun checkPasscodeUseCase(accessRepository: AccessRepository): CheckPasscodeUseCase {
+        return CheckPasscodeUseCase(accessRepository = accessRepository)
+    }
+    // … one @Provides per access use case
+    // endregion
+}
+```
+
+- `app/src/debug/…/di/DevDataModule.kt` provides `ResetAllAccessDataUseCase` and `SeedAccessDataUseCase`; release builds never see them.
+
+</details>
+
+</dd></dl>
+
+</dd></dl>
+
+## 3. View models — wire the access screens
+
+<dl><dd>
+
+#### Overview
+
+<dl><dd>
+
+- **Goal:** each access screen gets a view model; `RootViewModel` alone decides which phase shows.
+
+| Screen | View model | Job |
+|---|---|---|
+| Root | `RootViewModel` | Phase: splash → sign in → locked → unlocked; re-lock after *Lock after* |
+| A2 Sign in | `SignInViewModel` | Continue offline; provider buttons log until F02 |
+| A1 Biometric lock | `BiometricLockViewModel` | Prompt, fall back to A3 |
+| A3 Passcode | `PasscodeUnlockViewModel` | Keypad, tries left, lockout |
+| S4 App lock | `AppLockViewModel` | Lock on, biometrics, *Lock after* |
+| S5 Set passcode | `SetPasscodeViewModel` | Enter twice, save |
+
+```mermaid
+stateDiagram-v2
+    [*] --> SignIn: first launch
+    SignIn --> Unlocked: Continue offline, lock off
+    SignIn --> Locked: lock on
+    Locked --> Unlocked: biometrics or passcode
+    Unlocked --> Locked: back after Lock after
+```
+
+- **Check:** the Flow table at the top runs top to bottom on a phone.
+
+</dd></dl>
+
