@@ -128,3 +128,182 @@ flowchart LR
 
 </dd></dl>
 
+#### Build
+
+<dl><dd>
+
+<b>File</b> · <b class="tag-new">New</b> · `domain/src/main/kotlin/com/dd/sitelog/domain/entities/access/AccessSetting.kt`
+The user's app-lock choices, as Domain sees them.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.domain.entities.access
+
+data class AccessSetting(
+    val isShowWelcomeScreen: Boolean,
+    val isLockOn: Boolean,
+    val isBiometricOn: Boolean,
+    val lockAfterMs: Long,
+)
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `domain/src/main/kotlin/com/dd/sitelog/domain/entities/access/PasscodeCheck.kt`
+The answer to "is this passcode right?" — a business answer, not an error.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.domain.entities.access
+
+sealed interface PasscodeCheck {
+    data object Correct : PasscodeCheck
+
+    data class Wrong(val triesLeft: Int) : PasscodeCheck
+
+    data class LockedOut(val waitMs: Long) : PasscodeCheck
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `domain/src/main/kotlin/com/dd/sitelog/domain/entities/access/AccessError.kt`
+What can go wrong in the access feature, in Domain words.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.domain.entities.access
+
+sealed interface AccessError {
+    data object StorageUnavailable : AccessError
+
+    data object BiometricsUnavailable : AccessError
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `domain/src/main/kotlin/com/dd/sitelog/domain/repositories/AccessRepository.kt`
+The boundary between access use cases and storage; `:data` implements it.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.domain.repositories
+
+import com.dd.sitelog.domain.Outcome
+import com.dd.sitelog.domain.entities.access.AccessError
+import com.dd.sitelog.domain.entities.access.AccessSetting
+import com.dd.sitelog.domain.entities.access.PasscodeCheck
+
+interface AccessRepository {
+    suspend fun loadAccessSetting(): Outcome<AccessSetting, AccessError>
+
+    suspend fun saveAccessSetting(newSetting: AccessSetting): Outcome<Unit, AccessError>
+
+    suspend fun markWelcomeScreen(): Outcome<Unit, AccessError>
+
+    suspend fun checkPasscode(inputPasscode: String): Outcome<PasscodeCheck, AccessError>
+
+    suspend fun setPasscode(newPasscode: String): Outcome<Unit, AccessError>
+
+    suspend fun unlockWithBiometrics(): Outcome<Boolean, AccessError>
+
+    // Dev menu only: bound and called from the debug source set (A18)
+    suspend fun resetAllData()
+
+    suspend fun seedSampleData()
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `domain/src/main/kotlin/com/dd/sitelog/domain/usecases/access/CheckPasscodeUseCase.kt`
+One user action: check a typed passcode. The other five use cases have the same shape.
+
+<b>Explain</b> · A use case is a class with one `invoke`, so a view model calls it like a function: `checkPasscodeUseCase(passcode)`.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.domain.usecases.access
+
+import com.dd.sitelog.domain.Outcome
+import com.dd.sitelog.domain.entities.access.AccessError
+import com.dd.sitelog.domain.entities.access.PasscodeCheck
+import com.dd.sitelog.domain.repositories.AccessRepository
+
+class CheckPasscodeUseCase(
+    private val accessRepository: AccessRepository,
+) {
+    suspend operator fun invoke(inputPasscode: String): Outcome<PasscodeCheck, AccessError> {
+        return accessRepository.checkPasscode(inputPasscode = inputPasscode)
+    }
+}
+```
+
+| File | Calls |
+|---|---|
+| `LoadAccessSettingUseCase.kt` | `loadAccessSetting()` |
+| `SaveAccessSettingUseCase.kt` | `saveAccessSetting(newSetting)`; returns `Failure(BiometricsUnavailable)` when biometrics is on but the lock is off (business rule, D15) |
+| `MarkWelcomeScreenUseCase.kt` | `markWelcomeScreen()` |
+| `SetPasscodeUseCase.kt` | `setPasscode(newPasscode)` |
+| `UnlockWithBiometricsUseCase.kt` | `unlockWithBiometrics()` |
+| `devdata/ResetAllAccessDataUseCase.kt`, `SeedAccessDataUseCase.kt` | `resetAllData()`, `seedSampleData()` |
+
+</details>
+
+</dd></dl>
+
+</dd></dl>
+
+## 2. Fake data — access data sources in memory
+
+<dl><dd>
+
+#### Overview
+
+<dl><dd>
+
+- **Goal:** the real `AccessRepositoryImpl` — tries and lockout, mapping, `catch` → `Outcome`, logs — over two data sources holding in-memory values.
+- **Rule:** fake data lives only in the data source `Impl`s; step 4 replaces their insides and nothing else.
+
+| Layer | File | Job |
+|---|---|---|
+| Data · model | `models/local/AccessSettingModel.kt` | Stored shape (`@Serializable`, ready for DataStore) |
+| Data · data source | `datasources/local/access/AccessLocalDataSource.kt` + `Impl` | Settings, passcode, wrong tries — in memory |
+| Data · data source | `datasources/local/biometrics/BiometricLocalDataSource.kt` + `Impl` | Biometrics that always match after 0.5 s |
+| Data · mapper | `mappers/AccessSettingMapper.kt` | Model ↔ entity |
+| Data · repository | `repositories/AccessRepositoryImpl.kt` | Real: tries and lockout, mapping, errors, logs |
+| App | `di/DataSourcesModule.kt`, `RepositoriesModule.kt`, `UseCasesModule.kt` | Bind each type once |
+| App · debug | `debug/…/di/DevDataModule.kt`, `devmenu/` | Seed data, Delete all data |
+
+```mermaid
+flowchart LR
+    UC["Access use cases"] --> Repo["AccessRepositoryImpl<br/>real"]
+    Repo --> Map["AccessSettingMapper"]
+    Repo --> ADS["AccessLocalDataSourceImpl<br/>in memory"]
+    Repo --> BDS["BiometricLocalDataSourceImpl<br/>always matches"]
+    Dev["Dev menu (debug)"] --> DevUC["Reset / Seed use cases"] --> Repo
+```
+
+- **Check:** `./gradlew assembleDebug`; dev menu → Delete all data brings back first launch.
+
+</dd></dl>
+
