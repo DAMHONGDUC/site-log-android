@@ -1723,3 +1723,188 @@ flowchart LR
 
 </dd></dl>
 
+#### Build
+
+<dl><dd>
+
+<b>File</b> · <b class="tag-new">New</b> · `app/src/main/java/com/dd/sitelog/presentation/navigation/NavigationCoordinator.kt`
+Owns one tab's back stack; screens push routes through it, never other screens.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.presentation.navigation
+
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.navigation3.runtime.NavBackStack
+import androidx.navigation3.runtime.NavKey
+
+class NavigationCoordinator(val backStack: NavBackStack<NavKey>) {
+    fun push(route: NavKey) {
+        backStack.add(route)
+    }
+
+    fun pop() {
+        if (backStack.size > 1) {
+            backStack.removeAt(backStack.lastIndex)
+        }
+    }
+
+    fun popToRoot() {
+        while (backStack.size > 1) {
+            backStack.removeAt(backStack.lastIndex)
+        }
+    }
+}
+
+val LocalNavigationCoordinator = staticCompositionLocalOf<NavigationCoordinator> {
+    error("No NavigationCoordinator: wrap the screen in CoordinatedStack")
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `app/src/main/java/com/dd/sitelog/presentation/navigation/CoordinatedStack.kt`
+One tab's stack: remembers its back stack across process death and gives each entry its own view model store.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.presentation.navigation
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
+import androidx.navigation3.ui.NavDisplay
+
+@Composable
+fun CoordinatedStack(
+    root: NavKey,
+    modifier: Modifier = Modifier,
+) {
+    val backStack = rememberNavBackStack(root)
+    val coordinator = remember(backStack) {
+        NavigationCoordinator(backStack)
+    }
+
+    CompositionLocalProvider(LocalNavigationCoordinator provides coordinator) {
+        NavDisplay(
+            backStack = backStack,
+            modifier = modifier,
+            onBack = { coordinator.pop() },
+            entryDecorators = listOf(
+                rememberSaveableStateHolderNavEntryDecorator(),
+                rememberViewModelStoreNavEntryDecorator(),
+            ),
+            entryProvider = entryProvider {
+                appEntries()
+            },
+        )
+    }
+}
+```
+
+- Checked against Navigation 3 1.2.1 and `lifecycle-viewmodel-navigation3` 2.11.0: these names compile as written.
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `app/src/main/java/com/dd/sitelog/presentation/projects/ProjectsRoute.kt`
+The Projects feature's routes (ids only) and the screen each one shows.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.presentation.projects
+
+import androidx.navigation3.runtime.EntryProviderScope
+import androidx.navigation3.runtime.NavKey
+import com.dd.sitelog.presentation.projects.projectdetail.ProjectDetailScreen
+import com.dd.sitelog.presentation.projects.projectlist.ProjectListScreen
+import kotlinx.serialization.Serializable
+
+sealed interface ProjectsRoute : NavKey {
+    @Serializable
+    data object List : ProjectsRoute
+
+    @Serializable
+    data class Detail(val projectId: String) : ProjectsRoute
+}
+
+fun EntryProviderScope<NavKey>.projectsEntries() {
+    entry<ProjectsRoute.List> {
+        ProjectListScreen()
+    }
+    entry<ProjectsRoute.Detail> { route ->
+        ProjectDetailScreen(projectId = route.projectId)
+    }
+}
+```
+
+- A screen pushes with `LocalNavigationCoordinator.current.push(ProjectsRoute.Detail(projectId = id))`.
+
+</details>
+
+</dd></dl>
+
+#### Steps
+
+<dl><dd>
+
+1. Edge to edge is on (`enableEdgeToEdge()`): a screen not inside a `Scaffold` must add `Modifier.safeDrawingPadding()` or its title sits under the status bar.
+2. Icons: `material3` no longer brings icons; `material-icons-core` (frozen at 1.7.8, still in the BOM) covers tab icons. For anything else, add Material Symbols as vector drawables (**File → New → Vector Asset**) and use `painterResource`.
+3. One folder per screen under `presentation/<feature>/` (memory rule: 2+ screens → one folder each); each skeleton is a `<Name>Screen` + `<Name>Content` with previews.
+4. Screens read `FakeData` directly for now; F01–F18 replace it screen by screen with a view model.
+5. Dev menu lives in `app/src/debug/`; Settings shows its row only when `BuildConfig.DEBUG`.
+
+</dd></dl>
+
+</dd></dl>
+
+## User-facing text
+
+<dl><dd>
+
+- Every UI string is a key in `app/src/main/res/values/strings.xml`, Vietnamese in `values-vi/strings.xml`.
+- Keys: `snake_case`, by UI role, feature first: `access_sign_in_title`, `projects_list_empty_title`.
+- Placeholders `%1$s`, plurals in `<plurals>`; never concatenate.
+- Same keys as iOS with `.` → `_` (`access.sign_in.title` → `access_sign_in_title`) so copy can be shared.
+
+```xml
+<resources>
+    <string name="access_splash_error">SiteLog could not start.</string>
+    <string name="access_splash_try_again">Try again</string>
+    <string name="tab_projects">Projects</string>
+    <plurals name="issues_open_count">
+        <item quantity="one">%1$d open issue</item>
+        <item quantity="other">%1$d open issues</item>
+    </plurals>
+</resources>
+```
+
+</dd></dl>
+
+## Feature done
+
+<dl><dd>
+
+| Check | How |
+|---|---|
+| Build | `./gradlew assembleDebug testDebugUnitTest lintDebug spotlessCheck detekt` green, zero warnings |
+| CI | A PR is green; a `println(` makes it red |
+| Skeleton | Every mockup screen reachable; light and dark |
+| Roadmap | F00 steps ticked |
+
+</dd></dl>
