@@ -259,3 +259,134 @@ object UploadConstants {
 
 </dd></dl>
 
+### 08.2 Protocol
+
+<dl><dd>
+
+```
+POST /sync/pull  { since: <rev>, limit }        → { changes: {table: [rows]}, nextRev, hasMore }
+POST /sync/push  { mutations: [{ table, id, op, clientUpdatedAt, fields }] }
+                                                → { results: [{ id, status: applied|superseded|rejected, serverRow? }], serverRev }
+```
+
+- Server-assigned `rev` per user, gap-free and commit-ordered ([03-backend §6](03-backend.md#6-sync)).
+- Conflicts: `captures`, `issue_captures` insert-only; everything else LWW on `clientUpdatedAt`, tie-broken by `id`; `checklist_results` per `(run, item)`; **`sessions.state` monotonic**.
+- Deletes are soft (`deleted_at` + new `rev`); tombstones purge after 90 days; an old cursor gets `{ resyncRequired: true }`.
+- The outbox is ordered by dependency (`projects → locations → plan_sheets → sessions → captures → issues → issue_captures → annotations → checklist_*`), then by `clientUpdatedAt`.
+
+</dd></dl>
+
+### 08.3 Client engine
+
+<dl><dd>
+
+```kotlin
+class SyncRepositoryImpl(
+    private val syncLocalDataSource: SyncLocalDataSource,   // outbox + cursor (Room)
+    private val syncRemoteDataSource: SyncRemoteDataSource, // HttpClient
+    private val tables: Map<String, SyncableLocalDataSource>,
+    private val logger: AppLogger,
+) : SyncRepository {
+    private val mutex = Mutex()                       // one cycle at a time
+    override suspend fun sync(): Outcome<SyncReport, SyncError> = TODO() // pull, push, pull again if serverRev advanced
+    override suspend fun fullResync(): Outcome<Unit, SyncError> = TODO()
+}
+
+object SyncConstants {
+    const val SYNC_INTERVAL_MS: Long = 300_000          // foreground ticker
+    const val BACKGROUND_SYNC_INTERVAL_MINUTES: Long = 15 // WorkManager minimum
+    const val PULL_PAGE_SIZE: Int = 500
+    const val PUSH_BATCH_SIZE: Int = 200
+    const val BACKOFF_BASE_DELAY_MS: Long = 5_000
+    const val BACKOFF_MAX_DELAY_MS: Long = 600_000
+    const val TOMBSTONE_RETENTION_DAYS: Int = 90
+}
+```
+
+- Triggers: app to foreground (`ProcessLifecycleOwner`), network restored (`ConnectivityManager.NetworkCallback`), every `SYNC_INTERVAL_MS` while in the foreground, outbox reaching `PUSH_BATCH_SIZE`; in the background a `PeriodicWorkRequest` every 15 min (Android's minimum) — never per write.
+- Each `SyncableLocalDataSource` applies pulled rows and writes its own outbox row in the **same** Room transaction as the change.
+- `superseded` is not a failure: adopt `serverRow`.
+- Every cycle logs `{pulled, pushed, superseded, rejected, elapsedMs, cursor}`.
+- **Account deletion:** in-app → reauthenticate → `DELETE /account` → clear Room, secure store, media, Coil cache; numbers shown first; final audit entry.
+
+| Risk | Handling |
+|---|---|
+| Account switch with pending work | Cancel upload work, clear the outbox and cursor |
+| Cursor lost | Full resync from `rev 0` |
+| Clock skew picks the wrong LWW winner | Accepted for metadata; captures are immutable |
+| Process death mid-cycle | Cursor is written only after a page is applied, in the same transaction |
+
+**Done**
+
+- Offline relaunch after sign-in
+- A project created offline on an Android phone appears on an iPhone (and back) within one interval
+- A delete stays deleted on the other device
+- The other device cannot un-export a session
+- 80 generated locations sync as one batch
+- Resync from 0 reproduces the store
+- Token expiry mid-sync loses nothing
+
+**Tests**
+
+- Monotonic state across 16 pairs; LWW tie-break; tombstones never resurrect
+- Stale cursor → resync; outbox survives process death in order
+- `superseded` adoption; 200 mutations = one request
+- Account switch; 10 concurrent 401s → one refresh (`MockWebServer`)
+
+---
+
+</dd></dl>
+
+</dd></dl>
+
+## 10. Realtime progress channel
+
+<dl><dd>
+
+- Module: `:platformkit` `realtime/` ([A04](00-overview.md#a04--websocket-realtime-channel))
+
+**Goal:** learn what the server knows first — assembly done, hash checked, mismatch — without polling. An **observation** channel on OkHttp `WebSocket`; never controls `uploadkit`.
+
+**Boundary**
+
+- Uploads work at 100% with the channel dead.
+- `realtime` and `uploadkit` never use each other; `:data` turns events into `UploadStore` operations.
+- Events may only **advance** a job; silence never means "not done".
+
+| Direction | Messages (JSON text frames) |
+|---|---|
+| Client → server | `auth {token}` · `subscribe {sessionID}` · `ping {at}` |
+| Server → client | `snapshot {sessionID, completed[], failed[]}` · `jobCompleted {jobID, remoteKey, sha256}` · `jobFailed {jobID, reason}` · `pong {at}` |
+
+- `snapshot` is always first after `subscribe`; missed messages are never replayed.
+- The token goes in the first `auth` message, **never the URL**; close code `4001` → refresh and reconnect.
+- Connect only while the app is in the foreground (`ProcessLifecycleOwner` `STARTED`), a job is unsynced and the network is allowed; disconnect on `ON_STOP`.
+- App-level `ping` every `PING_INTERVAL_MS` (the server expects the JSON message; OkHttp's own `pingInterval` is set too, for NAT); reconnect with its own unlimited backoff.
+- `jobCompleted` is trusted only if its `sha256` matches the local hash; otherwise an `INTEGRITY` failure. Unknown ids are ignored; handling is idempotent.
+
+```kotlin
+object RealtimeConstants {
+    const val PING_INTERVAL_MS: Long = 30_000
+    const val PONG_TIMEOUT_MS: Long = 10_000
+    const val AUTH_TIMEOUT_MS: Long = 5_000
+    const val RECONNECT_BASE_DELAY_MS: Long = 1_000
+    const val RECONNECT_MAX_DELAY_MS: Long = 60_000
+    const val MAX_MESSAGE_BYTES: Int = 64 * 1024 // larger closes without parsing
+}
+```
+
+**Done**
+
+- 50 jobs reach `SYNCED` via events; the same 50 with the flag off, only slower
+- A two-minute drop reconnects and the snapshot restores state
+- A wrong `sha256` raises a flag instead of `SYNCED`
+- Backgrounding closes within 1 s
+
+**Tests**
+
+- Decode all types + malformed + oversized
+- Missing `pong` → backoff; backoff cap and jitter
+- Hash mismatch; applying one event 10× equals once; snapshot applies forward only; unknown `jobID`
+- Flow against `MockWebServer` WebSocket
+
+</dd></dl>
