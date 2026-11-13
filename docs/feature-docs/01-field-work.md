@@ -518,3 +518,118 @@ sealed interface AnnotationShape {
 
 </dd></dl>
 
+### 12.4 Trusted time
+
+<dl><dd>
+
+```kotlin
+data class TrustedTimestamp(
+    val deviceTime: Instant,
+    val elapsedRealtimeNanos: Long, // detects clock jumps within a boot
+    val bootCount: Int,             // Settings.Global.BOOT_COUNT: a reboot resets elapsed time
+    val serverOffsetMs: Long?,      // serverTime − deviceTime
+    val offsetMeasuredAt: Instant?,
+    val confidence: TimeConfidence,
+)
+```
+
+| Confidence | Condition |
+|---|---|
+| `SERVER_VERIFIED` | Offset measured within `SERVER_OFFSET_VALIDITY`, under `MAX_ACCEPTABLE_OFFSET` |
+| `SESSION_CONSISTENT` | No server contact, elapsed realtime matches wall-clock progression in the same boot |
+| `DEVICE_ONLY` | Clock jumped, rebooted, or no server contact |
+
+- Offset comes from the `Date` header of any backend response (`HttpClient` reports it).
+- Confidence is **printed in the report**; a capture is never rejected for low confidence.
+
+</dd></dl>
+
+### 12.5 Verification code
+
+<dl><dd>
+
+- On upload completion the backend records the hash and returns a short code; printed under each image; resolvable at `GET /verify/:code` ([03-backend §8](03-backend.md#8-verify)).
+
+| State | Meaning | Report wording |
+|---|---|---|
+| `registered` | Server recorded a client-supplied hash | "registered {code}" |
+| `verified` | Server re-read the object and recomputed the hash | "verified {code}" |
+| unsynced | Nothing left the device | "not yet verified" |
+
+```kotlin
+object AnnotationConstants {
+    const val MAX_UNDO_STEPS: Int = 20
+    const val STROKE_WIDTH_RATIO: Float = 0.004f // × image width
+    const val DERIVED_IMAGE_MAX_PIXEL_SIZE: Int = 2000
+}
+
+object TrustedTimeConstants {
+    const val SERVER_OFFSET_VALIDITY_MS: Long = 3_600_000
+    const val MAX_ACCEPTABLE_OFFSET_MS: Long = 120_000
+}
+```
+
+**Done**
+
+- 5 shapes survive relaunch over an original whose hash still verifies
+- Phone markup is proportional on A4; iOS-made markup renders the same on Android
+- Deleting the derived cache loses nothing
+- Moving the clock a day ahead drops confidence to `DEVICE_ONLY` and the report says so
+- Dictation works in airplane mode (API 31+)
+
+**Tests**
+
+- `AnnotationShape` JSON round-trip against the shared iOS sample
+- Same render at two sizes; original never mutated; undo bounds
+- Confidence for fresh/stale offset, clock jump, reboot
+- "not yet verified" wording; stamp position in three orientations
+
+---
+
+</dd></dl>
+
+</dd></dl>
+
+## 13. Checklist templates
+
+<dl><dd>
+
+- Modules: `:app` `presentation/checklists`, `:domain`, `:data`
+
+**Goal:** walk a location against a template, tick items, turn a failed item into an issue without retyping.
+
+- Out: weighted scoring, branching, regulatory libraries.
+
+| Table (Room) | Key columns |
+|---|---|
+| `checklist_templates` | `id`, `name`, `appliesTo?`, `isBuiltIn`, `usageCount` |
+| `checklist_template_items` | `id`, `templateId`, `order`, `text`, `defaultSeverity`, `requiresPhotoOnFail` |
+| `checklist_runs` | `id`, `templateId`, `sessionId`, `locationId`, `startedAt`, `completedAt?` |
+| `checklist_results` | `id`, `runId`, `templateItemId`, `outcome`, `note`, `issueId?`, `answeredAt?`; unique `(runId, templateItemId)` |
+
+- A run stores its own results; editing a template never rewrites completed runs.
+- Flow: pick a template (recent first) → one row per item `[✓ Pass] [✕ Fail] [– N/A]` (segmented buttons) → fail opens the camera if required and prefills the issue sheet ([03](#03-issues-and-before-after-pairing)) → top bar progress "14/22"; finish at 100% answered. Runs are resumable.
+- Built-ins (handover: living room, bedroom, bathroom, kitchen, balcony; electrical; plumbing; structural) are editable and duplicable, not deletable; edits fork a copy. Templates export/import as JSON (same format as iOS).
+- The PDF gets a per-location table that shows what **passed** too.
+
+```kotlin
+object ChecklistConstants {
+    const val MAX_ITEMS_PER_TEMPLATE: Int = 200
+    const val RECENT_TEMPLATE_COUNT: Int = 5
+    const val TEMPLATE_EXPORT_VERSION: Int = 1
+}
+```
+
+**Done**
+
+- 22-item run offline, two fails → two prefilled issues
+- Kill mid-run resumes
+- Template edit leaves the completed run and its PDF section unchanged
+
+**Tests**
+
+- Fail creates one issue with item text and severity; fail → pass resolves it
+- Template edit does not alter runs; completion percentage
+- JSON import validation; built-ins fork on edit
+
+</dd></dl>
