@@ -511,3 +511,264 @@ sealed interface Outcome<out T, out E> {
 
 </dd></dl>
 
+## 6. Infrastructure
+
+<dl><dd>
+
+### 6.1 Filesystem
+
+<dl><dd>
+
+| Path | Storage | Evidence |
+|---|---|---|
+| `filesDir/media/<project>/<session>/<capture>.<ext>` | Credential-encrypted internal storage | **Yes** |
+| `filesDir/plans/<project>/<sheet>.<ext>` | Internal | Yes |
+| `filesDir/derived/<…>-stamped.jpg` | Internal | No — regenerable |
+| `cacheDir/plans/<sheet>/tiles/`, `cacheDir/prebuffer/` | Cache (OS may clear) | No |
+| Room database `sitelog.db` | Internal, `databases/` | Metadata |
+| `filesDir/datastore/secrets.preferences_pb` | DataStore, values sealed with a Keystore AES-GCM key | Secrets |
+
+- File-based encryption keeps internal storage unreadable until the first unlock after boot; after that files stay readable while locked, which background upload needs (iOS `.completeUnlessOpen` equivalent).
+- No part temp files: OkHttp streams each part straight from the original file ([04.3](02-upload-sync.md#043-android-background-constraints)).
+- `res/xml/data_extraction_rules.xml` excludes `media/`, `plans/`, `derived/`, `datastore/` and the database from cloud backup and device transfer. S3 holds the remote copy.
+- The DB stores paths relative to `filesDir`.
+
+</dd></dl>
+
+### 6.2 Configuration
+
+<dl><dd>
+
+| Item | Where | Committed |
+|---|---|---|
+| `gradle/libs.versions.toml`, `build-logic/` | Repository | Yes; source of truth for the build |
+| `google-services.json` per Firebase project | `app/src/debug/`, `app/src/release/` | No: written by CI from secrets; `.example` committed |
+| `API_BASE_URL` | `buildConfigField` per build type, read only in `:app` `di/` | Yes (URLs are not secrets) |
+| Upload signing key, Play service account | CI secrets | Never |
+| AWS credentials, bucket names | Backend configuration | Never in the app |
+
+- Build types `debug` and `release`; a `staging` build type (`initWith(release)`, debug-signed) points at staging. No product flavors until a second app id is needed.
+
+</dd></dl>
+
+</dd></dl>
+
+## 7. Conventions
+
+<dl><dd>
+
+| Rule | Detail |
+|---|---|
+| Layers | Dependencies point inward; `:domain` imports no Android |
+| Dependencies | Only well-known, maintained libraries (Jetpack, Google, Square, JetBrains, Coil); add through `libs.versions.toml`; record the choice in [§9](#9-decisions) |
+| Constants | In `object <Area>Constants`; spacing via `DSSpacing`, typography via `DSTextStyle`, color via `DSColor` |
+| User-facing text | Only in `app/src/main/res/values/strings.xml` (+ `values-vi/`); fixed values (names, dates, ids, counts, file names) stay direct. Never in `:domain` or `:data` |
+| String keys | `snake_case`, named by UI role: `access_sign_in_title`; plurals in `<plurals>`; placeholders `%1$s`, never concatenation |
+| Logging | Every action logs with data, successes included: `"Upload failed — {captureId, part: 3/12, status: 503}"` |
+| Errors | Log the throwable; no `println`, no `Log.*` outside `AppLogger`; which layer catches: [§4.6](#46-error-handling) |
+| Startup | Each step guarded; Crashlytics first |
+| Compose size | Extract a composable when one exceeds ~50 lines; see [compose rules](../compose-rules.md) |
+| Screens | No business logic; view models orchestrate |
+| Style | Explicit types on public API, `val` by default, no `!!` |
+| Format | ktlint `android_studio` style via Spotless, max line 100; wrapped calls put one argument per line with a trailing comma; `class X @Inject constructor(` and explicit `return` kept ([F00 step 0](../feature-guide/S0-foundation-access/F00-foundation.md#0-gradle-project-and-entry-point)) |
+
+| Kind | Pattern | Example |
+|---|---|---|
+| Screen | `<Name>Screen` + stateless `<Name>Content` | `CameraScreen`, `CameraContent` |
+| Other composable | `<Name>View` or a noun | `RootView`, `PrivacyOverlay`, `BottomDock` |
+| ViewModel | `<Name>ViewModel` | `CameraViewModel` |
+| UI state | `<Name>State` | `CameraState` |
+| Route / entries | `<Feature>Route` / `<feature>Entries()` in `<Feature>Route.kt` | `ProjectsRoute`, `projectsEntries()` |
+| Use case | `<Verb><Noun>UseCase.kt`, one per file | `CreateProjectUseCase.kt` |
+| Repository interface / impl | `<Noun>Repository` / `<Noun>RepositoryImpl` | `ProjectRepository` / `ProjectRepositoryImpl` |
+| Room entity / DAO | `<Noun>Model` / `<Noun>Dao` in `models/local/` | `ProjectModel`, `ProjectDao` |
+| DTO / mapper | `<Noun>DTO` / `<Noun>Mapper` | `ProjectDTO` / `ProjectMapper` |
+| Data source interface / impl | `<Noun>LocalDataSource` · `<Noun>RemoteDataSource` / + `Impl` | `AccessLocalDataSourceImpl` |
+| Other interface implemented in `:data` | `<Interface>Impl` | `CaptureSourceImpl`, `UploadStoreImpl` |
+| PlatformKit engine | Its own noun | `HttpClient`, `UploadCoordinator`, `RealtimeChannel` |
+| PlatformKit interface | `<Noun>ing` / `<Noun>Providing` | `PlanRendering`, `BiometricAuthenticating` |
+| Constants | `object <Area>Constants` | `UploadConstants` |
+| Dependency names | End with the role: `...UseCase`, `...Repository`, `...DataSource` | `loadSettingsUseCase`, `accessRepository` |
+| Hilt module | `<Layer>Module.kt` in `di/` | `RepositoriesModule.kt` |
+| Test file | `<Type>Test.kt` | `UploadStateMachineTest.kt` |
+
+**Definition of done (every change)**
+
+- `./gradlew assembleDebug` with zero warnings (`allWarningsAsErrors`, Lint `warningsAsErrors`); detekt and ktlint clean; scoped tests pass.
+- Diff reviewed for literals, hard-coded user strings, unlogged `catch`, cross-layer imports.
+- No secret in the diff or logs.
+- Every user-facing string comes from `strings.xml`.
+
+**Adding a feature**
+
+- Steps and sprint order: [feature-guide/README.md](../feature-guide/README.md#how-every-feature-runs).
+
+1. Contract: `@Serializable` DTOs that match the backend tables and endpoints.
+2. Domain: sync-ready entities (`UUID` id, `updatedAt`, `deletedAt`, `syncState`), repository interface, use cases.
+3. Fake data: the real `<Noun>RepositoryImpl` over data source `Impl`s that hold in-memory values. Each type bound once in `di/`; the dev menu resets / seeds through `resetAllData()` / `seedSampleData()` and `usecases/devdata/` use cases bound only in the debug source set.
+4. View models wired into the screens; the feature runs end to end with Continue offline.
+5. Local: replace the data source `Impl`s' insides with Room, DataStore, Keystore, files and PlatformKit; same types, same bindings, repository unchanged.
+6. Backend: already built in site-log-be by the iOS track (or the same sprint); the app only checks it.
+7. Sync: the local data source becomes syncable (or a remote data source switches to `HttpClient`); signed in, a second device (iOS or Android) sees the change.
+8. Tests once the feature works end to end; schema change → version bump + migration test. Test doubles live only in `src/test/`.
+
+</dd></dl>
+
+## 8. Feature specs
+
+<dl><dd>
+
+| File | Specs |
+|---|---|
+| [01-field-work.md](01-field-work.md) | 01 Projects, sessions, locations · 02 Capture · 03 Issues · 06 DeviceLink · 11 Floor plans · 12 Annotation and trusted time · 13 Checklists |
+| [02-upload-sync.md](02-upload-sync.md) | 04 Upload engine · 08 Auth and sync · 10 Realtime channel |
+| [03-backend.md](03-backend.md) | 14 Backend API (Android client guide) |
+| [04-reporting-security.md](04-reporting-security.md) | 05 PDF and spreadsheet export · 07 Security and audit log |
+| [05-platform.md](05-platform.md) | Dev setup · 09 Diagnostics · Testing · 17 CI/CD · 18 Push and deep links · 19 Profiling |
+
+</dd></dl>
+
+## 9. Decisions
+
+<dl><dd>
+
+- Choices that are expensive to reverse: context, decision, rejected options, consequences.
+- Numbers mirror the iOS decisions (`A01` ↔ `D01`) where one exists; A10, A17, A21, A22 are Android-only.
+
+| # | Decision | iOS twin |
+|---|---|---|
+| [A01](#a01--hilt-for-dependency-injection) | Hilt for dependency injection | D01 |
+| [A02](#a02--hand-written-upload-engine) | Hand-written upload engine on WorkManager + OkHttp | D02 |
+| [A03](#a03--shared-backend) | Shared Node + PostgreSQL backend, hand-written sync | D03 |
+| [A04](#a04--websocket-realtime-channel) | OkHttp WebSocket realtime channel | D04 |
+| [A05](#a05--coil-for-remote-images) | Coil for remote images | D05 |
+| [A06](#a06--test-libraries) | JUnit 4 + coroutines-test + Turbine + Truth + Robolectric; snapshots optional, last | D06 |
+| [A07](#a07--firebase-crashlytics) | Firebase Crashlytics | D07 |
+| [A08](#a08--gradle-owns-the-build) | Gradle version catalog + convention plugins own the build | D08 |
+| [A09](#a09--layers-as-gradle-modules) | Layers as Gradle modules | D09 |
+| [A10](#a10--room-for-the-local-store) | Room for the local store | — |
+| [A11](#a11--data-sources-in-data-platformkit-for-system-services) | Data sources in `:data`, PlatformKit for system services | D11 |
+| [A12](#a12--mvvm-with-viewmodel-and-stateflow) | MVVM with `ViewModel` and `StateFlow` | D12 |
+| [A13](#a13--presentation-stays-in-app) | Presentation stays in `:app` | D13 |
+| [A14](#a14--view-models-take-use-cases-through-the-constructor) | View models take use cases through the constructor | D14 |
+| [A15](#a15--use-cases-return-entities) | Use cases return entities | D15 |
+| [A16](#a16--platformkit-is-a-library-not-a-ring) | PlatformKit is a library, not a ring | D16 |
+| [A17](#a17--navigation-3) | Navigation 3 | — |
+| [A18](#a18--dev-menu-data-through-use-cases) | Dev menu data through use cases, debug source set | D18 |
+| [A19](#a19--feature-routes-and-a-coordinator-per-back-stack) | Feature routes and a coordinator per back stack | D19 |
+| [A20](#a20--di-modules-split-by-layer) | DI modules split by layer | D20 |
+| [A21](#a21--own-outcome-type) | Own `Outcome` type | — |
+| [A22](#a22--minimum-sdk-29) | Minimum SDK 29 | — |
+
+- All accepted 2026-11-13. New decision: copy a section, keep its four parts, add a row above.
+
+---
+
+### A01 — Hilt for dependency injection
+
+<dl><dd>
+
+- **Context:** one place must bind `:data` implementations to `:domain` interfaces and let tests swap them.
+- **Decision:** Hilt. All bindings are `@Provides` in `:app` `di/`; view models use `@HiltViewModel` + `@Inject constructor`; screens get them with `hiltViewModel()`.
+
+| Rejected | Why not |
+|---|---|
+| Koin | Runtime resolution: a missing binding crashes at runtime, not at build |
+| Manual DI (`AppContainer`) | Boilerplate per use case; view model factories by hand |
+| Dagger without Hilt | Same engine, more setup for Android components |
+
+- **Consequences:**
+  - A missing binding fails the build (KSP).
+  - `:domain`, `:data`, `:platformkit` stay free of Hilt because bindings are `@Provides` in `:app`.
+  - Replacing the library touches `di/` and the view model annotations.
+
+</dd></dl>
+
+### A02 — Hand-written upload engine
+
+<dl><dd>
+
+- Spec: [04](02-upload-sync.md#04-upload-engine)
+- **Context:** 150–250 files and several GB must reach S3 through network loss, Doze, process death, reboot and URL expiry. Android has no background `URLSession`: a transfer dies with the process.
+- **Decision:** `uploadkit` in `:platformkit`, in-house: a `CoroutineWorker` scheduled by WorkManager (unique work, constraints, backoff, survives reboot) runs `UploadCoordinator`; OkHttp streams parts straight from the file; a long run is promoted to a foreground service of type `dataSync` with a progress notification. Own store interface, pure state machine, S3 multipart with per-part resume, jittered backoff, launch reconciliation.
+
+| Rejected | Why not |
+|---|---|
+| Firebase Storage | Cannot resume per part after process death; no priority control |
+| AWS Amplify / S3 SDK | Heavy; hides scheduling and resume |
+| Plain `DownloadManager`-style service | No upload support; no constraints |
+| User-initiated data transfer jobs (`JobScheduler`, API 34+) only | Not on API 29–33; revisit as an extra path once `minSdk` ≥ 34 |
+
+- **Consequences:**
+  - After a kill, the part in flight restarts; finished parts are never re-sent.
+  - Android 15+ limits `dataSync` foreground services to 6 h per 24 h: the worker stops cleanly and WorkManager continues later.
+  - A user's **Force stop** cancels all work until the app opens again: Diagnostics explains it.
+
+</dd></dl>
+
+### A03 — Shared backend
+
+<dl><dd>
+
+- **Decision:** the Android app uses the same [site-log-be](https://github.com/DAMHONGDUC/site-log-be) API, sync protocol and Firebase projects as iOS ([iOS D03](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/feature-docs/00-overview.md#d03--node--postgresql-backend-hand-written-sync)). One account works on both platforms.
+- **Consequences:** a contract change is made in site-log-be first, then on both apps; the only Android-specific server change is FCM push ([03 §10](03-backend.md#10-push-registration)).
+
+</dd></dl>
+
+### A04 — WebSocket realtime channel
+
+<dl><dd>
+
+- Spec: [10](02-upload-sync.md#10-realtime-progress-channel)
+- **Decision:** observation-only channel on OkHttp `WebSocket` in `platformkit/realtime`: connect, `auth` message, app-level ping, reconnect with backoff, events reconciled into the upload store. Never controls `uploadkit`.
+
+| Rejected | Why not |
+|---|---|
+| Polling | 243 jobs every 10 s drains battery and data |
+| FCM data messages as the channel | Not guaranteed, delayed in Doze, rate-limited |
+| Scarlet / Socket.IO | OkHttp covers it; no extra dependency |
+
+</dd></dl>
+
+### A05 — Coil for remote images
+
+<dl><dd>
+
+- **Decision:** Coil 3 (`coil-compose`, `coil-network-okhttp`) with size-bound requests and a bounded disk cache; memory cache key and disk cache key = the S3 object key, not the presigned URL. Local originals are decoded from disk with `ImageDecoder` / `BitmapFactory` `inSampleSize`, never through the network loader.
+
+| Rejected | Why not |
+|---|---|
+| Glide | Mature, but View-first; Coil is Compose- and coroutine-first |
+| Hand-written cache | Commodity, no product value |
+
+</dd></dl>
+
+### A06 — Test libraries
+
+<dl><dd>
+
+| Need | Library |
+|---|---|
+| Unit tests | JUnit 4 + Google Truth |
+| Coroutines and Flow | `kotlinx-coroutines-test`, Turbine |
+| Android classes on the JVM (Room, DataStore) | Robolectric |
+| Room migrations | `room-testing` `MigrationTestHelper` |
+| UI flows | Compose UI test (`createAndroidComposeRule`) — smoke paths only |
+| Screenshots (optional, F18) | Roborazzi |
+
+| Rejected | Why not |
+|---|---|
+| Mockito / MockK for repositories | Hand-written test doubles are clearer; MockK allowed only for Android framework classes |
+| Espresso for Compose screens | Compose UI test is the Compose API |
+
+</dd></dl>
+
+### A07 — Firebase Crashlytics
+
+<dl><dd>
+
+- **Decision:** Crashlytics from the Firebase Android BoM, initialized first in `Application.onCreate`; mapping files uploaded by the release build; non-fatals carry the same structured data as the log line.
+- **Consequences:** no user content or PII in custom keys; startup never blocks on it.
+
+</dd></dl>
+
