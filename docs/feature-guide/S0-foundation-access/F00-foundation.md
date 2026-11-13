@@ -210,3 +210,238 @@ junit = { module = "junit:junit", version.ref = "junit" }
 truth = { module = "com.google.truth:truth", version.ref = "truth" }
 turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+# Used by build-logic only
+android-gradle-plugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
+kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+compose-gradle-plugin = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }
+ksp-gradle-plugin = { module = "com.google.devtools.ksp:com.google.devtools.ksp.gradle.plugin", version.ref = "ksp" }
+room-gradle-plugin = { module = "androidx.room:room-gradle-plugin", version.ref = "room" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
+room = { id = "androidx.room", version.ref = "room" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+```
+
+</details>
+
+- Only what F00–F01 use. Each later feature adds its rows (OkHttp, Coil, WorkManager, Firebase BoM, Room is already here) in the step that first needs them, at the latest stable version of that day.
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `settings.gradle.kts`
+Lists the modules and where Gradle finds plugins and libraries.
+
+<b>Explain</b> · `includeBuild("build-logic")` makes the convention plugins available by id; `include` adds each module.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+pluginManagement {
+    includeBuild("build-logic")
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "site-log-android"
+
+include(":app")
+include(":core")
+include(":domain")
+include(":data")
+include(":platformkit")
+include(":designsystem")
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `build-logic/convention/src/main/kotlin/AndroidLibraryConventionPlugin.kt`
+Shared settings for every Android library module: SDK levels, Java 21, warnings as errors.
+
+<b>Explain</b> · Each module applies `id("sitelog.android.library")` instead of repeating 30 lines. The application plugin is the same plus `targetSdk`, `buildConfig = true` and R8 in release.
+
+- **AGP 9 has Kotlin built in:** never apply `org.jetbrains.kotlin.android`; AGP 9 fails the build if you do. Kotlin options go through `KotlinCompile` tasks (`configureKotlin()`).
+- `compileSdk` is 37: current Compose, Hilt and AndroidX releases refuse to build against 36.
+- Lint is strict (`warningsAsErrors`), minus three checks that only say "a newer version exists" (they would break CI every release) and `ObsoleteLintCustomCheck` (a library's own outdated lint jar).
+
+<details>
+<summary><b>Hint</b></summary>
+
+- A convention plugin is a class implementing `Plugin<Project>`; `apply` adds other plugins, then configures the `LibraryExtension`.
+- Register it in `build-logic/convention/build.gradle.kts` under `gradlePlugin { plugins { register(...) } }`.
+
+</details>
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+plugins {
+    `kotlin-dsl`
+}
+
+dependencies {
+    compileOnly(libs.android.gradle.plugin)
+    compileOnly(libs.kotlin.gradle.plugin)
+    compileOnly(libs.compose.gradle.plugin)
+    compileOnly(libs.ksp.gradle.plugin)
+    compileOnly(libs.room.gradle.plugin)
+}
+
+gradlePlugin {
+    plugins {
+        register("androidApplication") {
+            id = "sitelog.android.application"
+            implementationClass = "AndroidApplicationConventionPlugin"
+        }
+        register("androidLibrary") {
+            id = "sitelog.android.library"
+            implementationClass = "AndroidLibraryConventionPlugin"
+        }
+        register("jvmLibrary") {
+            id = "sitelog.jvm.library"
+            implementationClass = "JvmLibraryConventionPlugin"
+        }
+        register("compose") {
+            id = "sitelog.compose"
+            implementationClass = "ComposeConventionPlugin"
+        }
+        register("hilt") {
+            id = "sitelog.hilt"
+            implementationClass = "HiltConventionPlugin"
+        }
+        register("room") {
+            id = "sitelog.room"
+            implementationClass = "RoomConventionPlugin"
+        }
+    }
+}
+```
+
+```kotlin
+import org.gradle.api.Project
+import org.gradle.kotlin.dsl.withType
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
+internal fun Project.configureKotlin() {
+    tasks.withType<KotlinCompile>().configureEach {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_21)
+            allWarningsAsErrors.set(true)
+        }
+    }
+}
+```
+
+```kotlin
+object SiteLogSdk {
+    const val COMPILE_SDK: Int = 37
+    const val TARGET_SDK: Int = 36
+    const val MIN_SDK: Int = 29
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `build-logic/convention/build.gradle.kts`
+Builds the convention plugins and gives each one an id.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+plugins {
+    `kotlin-dsl`
+}
+
+dependencies {
+    compileOnly(libs.android.gradle.plugin)
+    compileOnly(libs.kotlin.gradle.plugin)
+    compileOnly(libs.compose.gradle.plugin)
+}
+
+gradlePlugin {
+    plugins {
+        register("androidApplication") {
+            id = "sitelog.android.application"
+            implementationClass = "AndroidApplicationConventionPlugin"
+        }
+        register("androidLibrary") {
+            id = "sitelog.android.library"
+            implementationClass = "AndroidLibraryConventionPlugin"
+        }
+        register("jvmLibrary") {
+            id = "sitelog.jvm.library"
+            implementationClass = "JvmLibraryConventionPlugin"
+        }
+        register("compose") {
+            id = "sitelog.compose"
+            implementationClass = "ComposeConventionPlugin"
+        }
+        register("hilt") {
+            id = "sitelog.hilt"
+            implementationClass = "HiltConventionPlugin"
+        }
+        register("room") {
+            id = "sitelog.room"
+            implementationClass = "RoomConventionPlugin"
+        }
+    }
+}
+```
+
+- `build-logic/settings.gradle.kts` adds `google()` + `mavenCentral()` and `versionCatalogs { create("libs") { from(files("../gradle/libs.versions.toml")) } }` so `libs` works here too.
+- `ComposeConventionPlugin` reads `CommonExtension` (no type parameters in AGP 9), sets `buildFeatures.compose = true` and adds the BOM, `ui`, `material3`, `ui-tooling-preview`, and `ui-tooling` for debug.
+- `HiltConventionPlugin` applies `com.google.devtools.ksp` + `com.google.dagger.hilt.android` and adds `hilt-android` + `ksp(hilt-compiler)`.
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `.editorconfig`
+Formatting rules for Android Studio; Spotless gets the same ktlint rules from the root build file.
+
+<details>
+<summary><b>Code</b></summary>
+
+```ini
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+
+[*.{kt,kts}]
+max_line_length = 100
+ktlint_code_style = android_studio
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true
+ktlint_function_signature_rule_force_multiline_when_parameter_count_greater_or_equal_than = 3
+ktlint_function_naming_ignore_when_annotated_with = Composable
