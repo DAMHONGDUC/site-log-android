@@ -772,3 +772,179 @@ sealed interface Outcome<out T, out E> {
 
 </dd></dl>
 
+### A08 — Gradle owns the build
+
+<dl><dd>
+
+- **Context:** iOS uses XcodeGen so the project is reviewable text; Gradle already is text, but five modules repeating the same setup drift apart.
+- **Decision:** `gradle/libs.versions.toml` holds every library and version; `build-logic/convention` holds plugins (`sitelog.android.application`, `sitelog.android.library`, `sitelog.jvm.library`, `sitelog.compose`, `sitelog.hilt`, `sitelog.room`); a module's `build.gradle.kts` is a few lines.
+
+| Rejected | Why not |
+|---|---|
+| Versions inline in each `build.gradle.kts` | Five places to bump |
+| `buildSrc` | Any change invalidates the whole build cache |
+
+- **Consequences:** changes to SDK levels, Kotlin options, lint and Compose flags happen once, in `build-logic`; never through Android Studio's Project Structure dialog.
+
+</dd></dl>
+
+### A09 — Layers as Gradle modules
+
+<dl><dd>
+
+- **Decision:** `:domain` (Kotlin JVM), `:data`, `:platformkit`, `:core`, `:designsystem` (Android libraries) and `:app`. The module graph is the dependency rule: `:data` → `:domain` + `:platformkit` + `:core`; `:platformkit` → `:core`; `:domain` depends on nothing.
+
+| Rejected | Why not |
+|---|---|
+| Packages inside one module | Only a grep script could stop a wrong import |
+| One module per feature | ~30 modules, built for many teams |
+
+- **Consequences:** `:domain` cannot see Android at all; JVM unit tests run fast; non-API code is `internal`.
+
+</dd></dl>
+
+### A10 — Room for the local store
+
+<dl><dd>
+
+- **Decision:** Room (KSP) with suspend DAOs and `Flow` queries, exported schemas, unique indices, `withTransaction` for multi-table writes.
+
+| Rejected | Why not |
+|---|---|
+| SQLDelight | Good, but Room is the Jetpack default with migration testing built in |
+| Realm / ObjectBox | Object stores; harder to mirror Postgres rules |
+| Raw SQLite | No compile-time query checks |
+
+</dd></dl>
+
+### A11 — Data sources in :data, PlatformKit for system services
+
+<dl><dd>
+
+- **Decision:**
+  - `:data` `datasources/local/`: `persistence/` (Room DAOs behind interfaces), `securestore/`, `filestorage/`, `preferences/` (DataStore).
+  - `:data` `datasources/remote/`: `<Noun>RemoteDataSource` + `Impl` over PlatformKit engines; `auth/` (Firebase Auth).
+  - `:platformkit`: system services and engines on system APIs (`HttpClient`, `uploadkit`, `realtime`).
+  - They return records and throw their own exceptions; repositories map.
+- **Consequences:** "never return entities" is a review rule for data sources (same module as repositories); a compiler rule for PlatformKit.
+
+</dd></dl>
+
+### A12 — MVVM with ViewModel and StateFlow
+
+<dl><dd>
+
+- **Decision:** an `androidx.lifecycle.ViewModel` calls a use case, gets its `Outcome` and updates one `MutableStateFlow`; one-off events (navigate, snackbar) are fields in state that the screen consumes, not a `Channel`.
+
+| Rejected | Why not |
+|---|---|
+| MVI with reducers and side-effect channels | More types per screen for the same result |
+| Presenter + output port per use case | Compose already redraws from state |
+
+</dd></dl>
+
+### A13 — Presentation stays in :app
+
+<dl><dd>
+
+- **Decision:** screens and view models live in `:app` `presentation/`; `tools/ci/check-imports.sh` stops them importing `:data` or `:platformkit`.
+- **Consequences:** revisit with a `:presentation` module when a second app (Wear, tablet-only) needs the screens.
+
+</dd></dl>
+
+### A14 — View models take use cases through the constructor
+
+<dl><dd>
+
+- **Decision:** `@HiltViewModel class X @Inject constructor(useCases…)`. A route id comes in with `@AssistedInject` + `@Assisted`, and the screen calls `hiltViewModel<X, X.Factory> { factory -> factory.create(id) }`.
+
+| Rejected | Why not |
+|---|---|
+| `SavedStateHandle` lookups by key | Stringly typed; Navigation 3 passes the route object |
+| Field injection | Dependencies hidden from the constructor |
+
+- **Consequences:** view model tests call the constructor with test doubles, no Hilt.
+
+</dd></dl>
+
+### A15 — Use cases return entities
+
+<dl><dd>
+
+- **Decision:** use cases take and return Domain entities (`Outcome<AccessSetting, AccessError>`); no request / response types. View models map entities to rows.
+
+</dd></dl>
+
+### A16 — PlatformKit is a library, not a ring
+
+<dl><dd>
+
+- **Decision:** `:platformkit` is treated as an external library: generic, no Domain or Data types, no app names (`Passcode`, `Project`). It offers capabilities (“authenticate with biometrics”, “store a secret”, “send a request”) and may know external formats (backend messages, BLE profiles, PDF layout). Only `:data` wraps it.
+
+</dd></dl>
+
+### A17 — Navigation 3
+
+<dl><dd>
+
+- **Context:** the iOS app owns a `NavigationPath` per tab (D19). Navigation Compose 2 owns its back stack inside a `NavController`; deep links and tab stacks fight it.
+- **Decision:** `androidx.navigation3`: the back stack is a list the app owns (`rememberNavBackStack`), `NavDisplay` renders it, routes are `@Serializable` `NavKey`s; `lifecycle-viewmodel-navigation3` scopes a view model to its entry.
+
+| Rejected | Why not |
+|---|---|
+| Navigation Compose 2 (type-safe routes) | Back stack hidden in `NavController`; one per tab is awkward |
+| Voyager / Decompose | Third-party; Navigation 3 is the Jetpack answer |
+
+</dd></dl>
+
+### A18 — Dev menu data through use cases
+
+<dl><dd>
+
+- **Decision:** each repository interface has `resetAllData()` / `seedSampleData()`; `usecases/devdata/` holds `ResetAll<Feature>DataUseCase` / `Seed<Feature>DataUseCase`; they are bound only in `app/src/debug/…/DevDataModule.kt`, and the dev menu lives in `app/src/debug/`.
+- **Consequences:** Kotlin has no `#if DEBUG`: the interface methods exist in release, but nothing binds or calls them, and R8 removes them.
+
+</dd></dl>
+
+### A19 — Feature routes and a coordinator per back stack
+
+<dl><dd>
+
+- **Decision:** each feature owns `<Feature>Route` (ids only) and `<feature>Entries()` (route → screen) in `presentation/<feature>/<Feature>Route.kt`. One `NavigationCoordinator` per tab back stack; `CoordinatedStack` creates it and provides it through `LocalNavigationCoordinator`.
+- **Consequences:** deep links (F16) map a URI to a tab and a route, then push on that tab's coordinator; a bottom sheet that opens a full screen dismisses itself first.
+
+</dd></dl>
+
+### A20 — DI modules split by layer
+
+<dl><dd>
+
+- **Decision:** `di/` holds one Hilt module per layer: `CoreModule`, `PlatformModule`, `DataSourcesModule`, `RepositoriesModule`, `UseCasesModule`, `SyncTablesModule` (F04); past ~300 lines `UseCasesModule` splits into `di/usecases/<Feature>UseCasesModule.kt`.
+
+</dd></dl>
+
+### A21 — Own Outcome type
+
+<dl><dd>
+
+- **Context:** iOS uses Swift's `Result<Success, Failure>` with a typed failure. Kotlin's `Result<T>` only carries a `Throwable` and is meant for `runCatching`.
+- **Decision:** `sealed interface Outcome<out T, out E>` in `:domain` with `Success`, `Failure`, and `map`, `flatMap`, `onSuccess`, `onFailure` extensions (~40 lines).
+
+| Rejected | Why not |
+|---|---|
+| `kotlin.Result` | Failure is a `Throwable`, not a Domain error enum |
+| Arrow `Either` | A large library for one type |
+
+</dd></dl>
+
+### A22 — Minimum SDK 29
+
+<dl><dd>
+
+- **Decision:** `minSdk = 29` (Android 10).
+- **Why:** scoped storage, `PowerManager.thermalStatus`, `BiometricPrompt` with stable `DEVICE_CREDENTIAL` behavior from 30 (29 uses `KeyguardManager` fallback), and CameraX/Media3 fully supported; covers almost all phones still in use on sites.
+- **Consequences:** on-device speech needs API 31; on 29–30 dictation falls back to the phrase library ([12.3](01-field-work.md#123-dictation-and-voice-notes)).
+
+</dd></dl>
+
+</dd></dl>
