@@ -1579,3 +1579,147 @@ fun SiteLogTheme(
         palette = LightPalette
     }
 
+    val colorScheme = if (isDark) {
+        darkColorScheme(
+            primary = palette.textPrimary,
+            onPrimary = palette.onPrimary,
+            background = palette.canvas,
+            surface = palette.raised,
+            onSurface = palette.textPrimary,
+            error = palette.critical,
+        )
+    } else {
+        lightColorScheme(
+            primary = palette.textPrimary,
+            onPrimary = palette.onPrimary,
+            background = palette.canvas,
+            surface = palette.raised,
+            onSurface = palette.textPrimary,
+            error = palette.critical,
+        )
+    }
+
+    val typography = Typography(
+        headlineLarge = DSTextStyle.largeTitle,
+        titleLarge = DSTextStyle.title,
+        titleMedium = DSTextStyle.headline,
+        bodyLarge = DSTextStyle.body,
+        bodyMedium = DSTextStyle.subhead,
+        bodySmall = DSTextStyle.footnote,
+        labelSmall = DSTextStyle.caption,
+    )
+
+    CompositionLocalProvider(LocalDSPalette provides palette) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = typography,
+            content = content,
+        )
+    }
+}
+```
+
+- Dynamic color (Material You) stays off: the brand looks the same on every phone.
+
+</details>
+
+</dd></dl>
+
+</dd></dl>
+
+## 5. Backend — shared
+
+<dl><dd>
+
+#### Overview
+
+<dl><dd>
+
+- **Goal:** know the backend the app will call; nothing to build here.
+- **Built in:** [site-log-be S0](https://github.com/DAMHONGDUC/site-log-be/blob/main/docs/feature-guide/S0-foundation/README.md) (by the iOS track or the same sprint).
+
+| Backend piece | The Android app | Check |
+|---|---|---|
+| `GET /health` on staging | Nothing calls it yet | `adb shell` → `curl` is not on the phone; open `https://api-staging.<domain>/health` in Chrome on the emulator |
+| Local backend on the Mac | Debug builds reach it at `http://10.0.2.2:3000` | Chrome on the emulator → `http://10.0.2.2:3000/health` |
+
+</dd></dl>
+
+</dd></dl>
+
+## 6. Backend URL per build type
+
+<dl><dd>
+
+#### Overview
+
+<dl><dd>
+
+- **Goal:** each build type knows its backend; debug builds may use plain HTTP to the Mac, release builds never.
+
+| File | Holds |
+|---|---|
+| `app/build.gradle.kts` `buildTypes` | `buildConfigField("String", "API_BASE_URL", …)` for `debug`, `staging`, `release` |
+| `app/src/debug/res/xml/network_security_config.xml` | Cleartext allowed to `10.0.2.2`, `localhost` and the Mac's LAN name only |
+| `app/src/debug/AndroidManifest.xml` | `android:networkSecurityConfig="@xml/network_security_config"` (merged into debug only) |
+
+- **Check:** a debug build logs `API_BASE_URL` at startup; the release APK's manifest has no network security config.
+
+</dd></dl>
+
+#### Steps
+
+<dl><dd>
+
+1. `buildConfig` is already on (application convention plugin); add `buildConfigField("String", "API_BASE_URL", …)` per build type: `debug` → `http://10.0.2.2:3000`, `staging` (`initWith(getByName("release"))`, debug signing) → staging URL, `release` → production URL.
+2. Only `di/` reads `BuildConfig.API_BASE_URL` and passes it to `HttpClient` (F02); no other class reads `BuildConfig`.
+3. Debug network config:
+
+    ```xml
+    <network-security-config>
+        <domain-config cleartextTrafficPermitted="true">
+            <domain includeSubdomains="false">10.0.2.2</domain>
+            <domain includeSubdomains="false">localhost</domain>
+        </domain-config>
+    </network-security-config>
+    ```
+
+</dd></dl>
+
+</dd></dl>
+
+## 7. Skeleton screens and navigation
+
+<dl><dd>
+
+#### Overview
+
+<dl><dd>
+
+- **Goal:** every screen of the mockups exists at ~30% (layout, tokens, sample data), reachable through tabs and routes, so each feature only wires a view model later.
+
+| File | Holds |
+|---|---|
+| `presentation/navigation/NavigationCoordinator.kt` | Owns one back stack: `push`, `pop`, `popToRoot` |
+| `presentation/navigation/CoordinatedStack.kt` | Creates a back stack + coordinator, provides `LocalNavigationCoordinator`, renders `NavDisplay` |
+| `presentation/navigation/AppEntries.kt` | `appEntries()`: every feature's `<feature>Entries()` |
+| `presentation/maintab/MainTabScreen.kt` | `NavigationBar` with Projects · Capture · Sync · Settings; one `CoordinatedStack` per tab |
+| `presentation/<feature>/<Feature>Route.kt` | `@Serializable` routes + `<feature>Entries()` |
+| `presentation/<feature>/<screen>/<Name>Screen.kt` | Skeleton composable reading `FakeData` |
+| `fakes/FakeData.kt` | Sample projects, rooms, issues; shrinks as features land |
+| `debug/…/devmenu/DevMenuScreen.kt` | Seed data · Delete all data · Reset app (wired in F01) |
+
+```mermaid
+flowchart LR
+    Root["RootScreen"] --> Tabs["MainTabScreen"]
+    Tabs --> S1["CoordinatedStack<br/>Projects"]
+    Tabs --> S2["CoordinatedStack<br/>Sync"]
+    Tabs --> S3["CoordinatedStack<br/>Settings"]
+    S1 --> Entries["appEntries()<br/>route → screen"]
+```
+
+- **Check:** every mockup screen opens from the tabs; back works per tab; switching tabs keeps each stack.
+- **Why:** [A17](../../feature-docs/00-overview.md#a17--navigation-3), [A19](../../feature-docs/00-overview.md#a19--feature-routes-and-a-coordinator-per-back-stack).
+
+</dd></dl>
+
