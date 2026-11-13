@@ -694,3 +694,235 @@ stateDiagram-v2
 
 </dd></dl>
 
+#### Build
+
+<dl><dd>
+
+- Screens never navigate between phases: they call a lambda (`onUnlocked`), and `RootViewModel` picks the next phase.
+- Keep each skeleton's layout; only data and actions move to the view model.
+
+<b>File</b> · <b class="tag-new">New</b> · `app/src/main/java/com/dd/sitelog/presentation/root/RootViewModel.kt`
+Decides the top-level phase and re-locks when the app returns after *Lock after*.
+
+<b>Explain</b> · Lifecycle events come from `ProcessLifecycleOwner` (whole app to background / foreground). The time away is measured with `elapsedRealtimeMs`, which the user cannot change in Settings.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.presentation.root
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.dd.sitelog.core.clock.AppClock
+import com.dd.sitelog.domain.Outcome
+import com.dd.sitelog.domain.entities.access.AccessSetting
+import com.dd.sitelog.domain.usecases.access.LoadAccessSettingUseCase
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+sealed interface RootPhase {
+    data object Splash : RootPhase
+    data object SignIn : RootPhase
+    data object Locked : RootPhase
+    data object Unlocked : RootPhase
+}
+
+@HiltViewModel
+class RootViewModel @Inject constructor(
+    private val loadAccessSettingUseCase: LoadAccessSettingUseCase,
+    private val appClock: AppClock,
+) : ViewModel() {
+
+    private val _phase = MutableStateFlow<RootPhase>(RootPhase.Splash)
+    val phase: StateFlow<RootPhase> = _phase.asStateFlow()
+
+    private var backgroundedAtMs: Long? = null
+
+    fun onStartupReady() {
+        viewModelScope.launch {
+            val outcome = loadAccessSettingUseCase()
+            when (outcome) {
+                is Outcome.Success -> _phase.value = firstPhaseFor(outcome.value)
+                is Outcome.Failure -> _phase.value = RootPhase.SignIn
+            }
+        }
+    }
+
+    fun onAppBackgrounded() {
+        backgroundedAtMs = appClock.elapsedRealtimeMs()
+    }
+
+    fun onAppForegrounded() {
+        val leftAt: Long = backgroundedAtMs ?: return
+        backgroundedAtMs = null
+        viewModelScope.launch {
+            val outcome = loadAccessSettingUseCase()
+            if (outcome is Outcome.Success) {
+                val setting: AccessSetting = outcome.value
+                val awayMs: Long = appClock.elapsedRealtimeMs() - leftAt
+                if (setting.isLockOn && awayMs >= setting.lockAfterMs) {
+                    _phase.value = RootPhase.Locked
+                }
+            }
+        }
+    }
+
+    fun onUnlocked() {
+        _phase.value = RootPhase.Unlocked
+    }
+
+    private fun firstPhaseFor(setting: AccessSetting): RootPhase {
+        if (!setting.isShowWelcomeScreen) {
+            return RootPhase.SignIn
+        }
+        if (setting.isLockOn) {
+            return RootPhase.Locked
+        }
+        return RootPhase.Unlocked
+    }
+}
+```
+
+- `RootScreen` observes `ProcessLifecycleOwner.get().lifecycle` in a `DisposableEffect` and calls `onAppBackgrounded` / `onAppForegrounded`; while the lock is on it sets `FLAG_SECURE` on the activity window.
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `app/src/main/java/com/dd/sitelog/presentation/access/passcodeunlock/PasscodeUnlockViewModel.kt`
+A3: collects six digits, asks the use case, shows tries left or the lockout.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.presentation.access.passcodeunlock
+
+import androidx.annotation.StringRes
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.dd.sitelog.R
+import com.dd.sitelog.domain.Outcome
+import com.dd.sitelog.domain.entities.access.PasscodeCheck
+import com.dd.sitelog.domain.usecases.access.CheckPasscodeUseCase
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+data class PasscodeUnlockState(
+    val entered: String = "",
+    val triesLeft: Int? = null,
+    val lockedOutMs: Long? = null,
+    @param:StringRes val messageRes: Int? = null,
+)
+
+@HiltViewModel
+class PasscodeUnlockViewModel @Inject constructor(
+    private val checkPasscodeUseCase: CheckPasscodeUseCase,
+) : ViewModel() {
+    private val _state = MutableStateFlow(PasscodeUnlockState())
+    val state: StateFlow<PasscodeUnlockState> = _state.asStateFlow()
+
+    fun onDigit(digit: Int, onUnlocked: () -> Unit) {
+        val current = _state.value
+        if (current.entered.length >= PASSCODE_LENGTH) {
+            return
+        }
+        val entered: String = current.entered + digit.toString()
+        _state.value = current.copy(entered = entered, messageRes = null)
+        if (entered.length == PASSCODE_LENGTH) {
+            check(entered, onUnlocked)
+        }
+    }
+
+    private fun check(entered: String, onUnlocked: () -> Unit) {
+        viewModelScope.launch {
+            val outcome = checkPasscodeUseCase(entered)
+            when (outcome) {
+                is Outcome.Failure -> showError()
+                is Outcome.Success -> handle(outcome.value, onUnlocked)
+            }
+        }
+    }
+
+    private fun showError() {
+        _state.value = PasscodeUnlockState(messageRes = R.string.access_passcode_error)
+    }
+
+    private fun handle(check: PasscodeCheck, onUnlocked: () -> Unit) {
+        when (check) {
+            is PasscodeCheck.Correct -> {
+                onUnlocked()
+            }
+
+            is PasscodeCheck.Wrong -> {
+                _state.value = PasscodeUnlockState(triesLeft = check.triesLeft)
+            }
+
+            is PasscodeCheck.LockedOut -> {
+                _state.value = PasscodeUnlockState(lockedOutMs = check.waitMs)
+            }
+        }
+    }
+
+    private companion object {
+        const val PASSCODE_LENGTH: Int = 6
+    }
+}
+```
+
+- The screen shows dots for `entered.length`, never the digits; tries left use `pluralStringResource`.
+- `@param:StringRes`: Kotlin 2.4 warns on a bare `@StringRes` in a constructor, and warnings fail the build.
+- `showError()` is its own function so no line passes 100 characters.
+
+</details>
+
+</dd></dl>
+
+</dd></dl>
+
+## 4. Local — DataStore, Keystore and BiometricPrompt
+
+<dl><dd>
+
+#### Overview
+
+<dl><dd>
+
+- **Goal:** the two data source `Impl`s keep their type and methods; inside they move to DataStore, a Keystore-sealed secure store and `BiometricPrompt`. Repository, use cases, view models and screens do not change.
+- **Spec:** [07.2](../../feature-docs/04-reporting-security.md#072-app-lock).
+
+| Action | File | Holds |
+|---|---|---|
+| <b class="tag-new">New</b> | `core/crypto/PasscodeHasher.kt` | PBKDF2-HMAC-SHA256, 16-byte random salt, constant-time compare |
+| <b class="tag-new">New</b> | `platformkit/securestore/SecureStore.kt` + `KeystoreSecureStore.kt` | `put/get/remove(key)` of small strings; AES-GCM key in the Android Keystore; values in a DataStore file |
+| <b class="tag-new">New</b> | `platformkit/activity/CurrentActivityProvider.kt` | Tracks the resumed `FragmentActivity` (registered in `SiteLogApplication`) |
+| <b class="tag-new">New</b> | `platformkit/biometrics/BiometricAuthenticating.kt` + `BiometricAuthenticator.kt` | `canAuthenticate()`, `authenticate(title, cancelLabel)`; detects a changed enrollment |
+| <b class="tag-replace">Replace</b> | `datasources/local/access/AccessLocalDataSourceImpl.kt` | Settings JSON in DataStore Preferences; passcode hash + salt + wrong tries in the secure store |
+| <b class="tag-replace">Replace</b> | `datasources/local/biometrics/BiometricLocalDataSourceImpl.kt` | Calls `BiometricAuthenticating`; its exceptions go up to the repository |
+| <b class="tag-edit">Edit</b> | `di/PlatformModule.kt`, `DataSourcesModule.kt` | Bind the new services; the bound data source types stay |
+| — | `MainActivity.kt` | Already a `FragmentActivity` since F00 (`BiometricPrompt` needs it) |
+| — | `repositories/AccessRepositoryImpl.kt` | Unchanged |
+
+```mermaid
+flowchart LR
+    Repo["AccessRepositoryImpl<br/>unchanged"] --> ADS["AccessLocalDataSourceImpl"]
+    ADS --> DSP[("DataStore<br/>settings")]
+    ADS --> SS["KeystoreSecureStore<br/>hash · salt · wrong tries"]
+    ADS --> Hash["PasscodeHasher<br/>:core"]
+    Repo --> BDS["BiometricLocalDataSourceImpl"]
+    BDS --> Auth["BiometricAuthenticator<br/>:platformkit"] --> BP["BiometricPrompt"]
+```
+
+- **Check:** process death (`adb shell am kill`) and relaunch keep passcode, settings and lockout; `git diff` shows no change under `repositories/` or `presentation/`.
+
+</dd></dl>
+
