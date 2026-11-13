@@ -259,3 +259,111 @@ flowchart TD
 
 </dd></dl>
 
+## S7 — Checklists, DeviceLink, diagnostics · internal testing #2 · 47h
+
+<dl><dd>
+
+- Overview: [S7](feature-guide/S7-checklists-devices-diagnostics/README.md)
+
+**F12 — Checklists · 12h** · [guide](feature-guide/S7-checklists-devices-diagnostics/F12-checklists.md)
+
+- [ ] **F12.1** - [Contract] - [1h] - Template, item, run, result DTOs
+- [ ] **F12.2** - [Domain] - [1h] - Checklist types, Fail → issue use case
+- [ ] **F12.3** - [Fake data] - [1h] - Repository + data sources in memory
+- [ ] **F12.4** - [View models] - [4h] - Checklists screens
+- [ ] **F12.5** - [Local] - [4h] - Built-in templates and results on Room
+- [ ] **F12.6** - [Backend] - [0h] - Shared: `0009_checklists.sql`
+- [ ] **F12.7** - [Sync] - [1h] - Checklist tables join sync
+- [ ] Tests written and green
+
+**F13 — DeviceLink · 18h** · [guide](feature-guide/S7-checklists-devices-diagnostics/F13-devicelink.md)
+
+- [ ] **F13.1** - [Contract] - [1h] - Mock meter profile: service, characteristic, bytes (same as iOS)
+- [ ] **F13.2** - [Domain] - [1h] - DeviceLink types
+- [ ] **F13.3** - [Fake data] - [1h] - Repository + data source on scripted readings
+- [ ] **F13.4** - [View models] - [3h] - Pairing and camera overlay
+- [ ] **F13.5** - [Local] - [8h] - BLE central inside the data source (manager · profiles · data source)
+- [ ] **F13.6** - [Mock] - [3h] - Mock meter (GATT server) on a second Android phone
+- [ ] **F13.7** - [Release] - [1h] - Feature flag, off for users
+- [ ] Tests written and green
+
+**F14 — Diagnostics · 17h** · [guide](feature-guide/S7-checklists-devices-diagnostics/F14-diagnostics.md)
+
+- [ ] **F14.1** - [Domain] - [1h] - Diagnostics snapshot
+- [ ] **F14.2** - [Fake data] - [1h] - Repository + data source with fixed values
+- [ ] **F14.3** - [View models] - [2h] - Diagnostics and cleanup screens
+- [ ] **F14.4** - [Local] - [8h] - Storage checks, cleanup, bundle, standby bucket, Crashlytics
+- [ ] **F14.5** - [Release] - [5h] - Profiling pass and internal testing #2
+- [ ] Tests written and green
+
+</dd></dl>
+
+## S8 — Realtime, push, accessibility · 41h
+
+<dl><dd>
+
+- Overview: [S8](feature-guide/S8-realtime-push-quality/README.md)
+
+**F15 — Realtime · 13h** · [guide](feature-guide/S8-realtime-push-quality/F15-realtime.md)
+
+- [ ] **F15.1** - [Contract] - [1h] - WebSocket messages
+- [ ] **F15.2** - [Domain] - [1h] - Upload events, realtime repository
+- [ ] **F15.3** - [Fake data] - [1h] - Repository + data source on a timer
+- [ ] **F15.4** - [View models] - [2h] - Live state on the Sync tab
+- [ ] **F15.5** - [Backend] - [0h] - Shared: `/ws`, verify worker
+- [ ] **F15.6** - [Sync] - [8h] - OkHttp WebSocket inside the data source (client · reconnect)
+- [ ] Tests written and green
+
+**F16 — Push and deep links · 14h** · [guide](feature-guide/S8-realtime-push-quality/F16-push-deeplinks.md)
+
+- [ ] **F16.1** - [Contract] - [1h] - FCM data payload, `POST /devices` with `platform: "fcm"`
+- [ ] **F16.2** - [Domain] - [1h] - Deep link parser
+- [ ] **F16.3** - [Fake data] - [1h] - Repository + token data source in memory
+- [ ] **F16.4** - [View models] - [2h] - Notification permission moment, settings row
+- [ ] **F16.5** - [Local] - [4h] - FCM service, channels, `sitelog://` intent filter, router
+- [ ] **F16.6** - [Backend] - [3h] - site-log-be: accept `platform`, send through FCM (new work, agreed with the backend first)
+- [ ] **F16.7** - [Sync] - [2h] - Token sent through `HttpClient`
+- [ ] Tests written and green
+
+**F17 — Accessibility and performance · 14h** · [guide](feature-guide/S8-realtime-push-quality/F17-accessibility-performance.md)
+
+- [ ] **F17.1** - [Polish] - [8h] - TalkBack, font scale 200%, contrast, 48 dp targets
+- [ ] **F17.2** - [Release] - [6h] - Budgets with traces, Baseline Profile, Data safety draft, feedback
+
+</dd></dl>
+
+## S9 — UI finish and Google Play · 48h
+
+<dl><dd>
+
+- Overview: [S9](feature-guide/S9-release/README.md)
+
+**F18 — UI finish and Google Play · 48h** · [guide](feature-guide/S9-release/F18-ui-finish.md)
+
+- [ ] **F18.1** - [UI] - [6h] - Components to Figma
+- [ ] **F18.2** - [UI] - [3h] - Figma S1: access screens
+- [ ] **F18.3** - [UI] - [6h] - Figma S2–S3: projects, sessions, rooms
+- [ ] **F18.4** - [UI] - [6h] - Figma S4–S5: camera, capture review, issues
+- [ ] **F18.5** - [UI] - [5h] - Figma S6–S7: markup, stamp, plans
+- [ ] **F18.6** - [UI] - [6h] - Figma S8–S9: checklists, reports
+- [ ] **F18.7** - [UI] - [5h] - Figma S10–S11: sync, diagnostics, settings
+- [ ] **F18.8** - [UI] - [5h] - Dark theme, empty / error / offline states, imagery
+- [ ] **F18.9** - [Release] - [6h] - Accessibility re-check, store listing, Data safety, production rollout
+- [ ] **F18.10** - [Tests] - [6h] - Optional: Roborazzi screenshots (not counted)
+- [ ] **F18.11** - [Backend] - [0h] - Shared: production backend already live
+
+</dd></dl>
+
+## Rules
+
+<dl><dd>
+
+1. **Offline first, inside every feature.**
+2. **No fake repositories:** fake data only in data source `Impl`s.
+3. **Continue offline is a product mode:** test it every sprint.
+4. **Task size 2–6h:** split a bigger step when it starts.
+5. **Tests after the feature works** end to end.
+6. **Visual finish waits for F18.**
+7. **Tick the box** here in the commit that finishes the step.
+
+</dd></dl>
