@@ -919,3 +919,208 @@ inline fun <T, E, R> Outcome<T, E>.map(transform: (T) -> R): Outcome<R, E> {
     }
 }
 
+inline fun <T, E, R> Outcome<T, E>.flatMap(transform: (T) -> Outcome<R, E>): Outcome<R, E> {
+    return when (this) {
+        is Outcome.Success -> transform(value)
+        is Outcome.Failure -> this
+    }
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `app/src/main/java/com/dd/sitelog/startup/StartupSequence.kt`
+Runs the startup steps one by one, each guarded and logged; a blocking step that fails stops launch.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.startup
+
+import com.dd.sitelog.core.logger.AppLogger
+import com.dd.sitelog.core.logger.LogCategory
+import kotlin.coroutines.cancellation.CancellationException
+
+interface StartupStep {
+    val name: String
+    val blocksLaunch: Boolean
+
+    suspend fun run()
+}
+
+class StartupSequence(
+    private val steps: List<StartupStep>,
+    private val logger: AppLogger,
+) {
+    suspend fun run(): Boolean {
+        for (step in steps) {
+            try {
+                step.run()
+                logger.info(LogCategory.APP, "Startup step done — {step: ${step.name}}")
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (exception: Exception) {
+                logger.error(LogCategory.APP, "Startup step failed — {step: ${step.name}}", exception)
+                if (step.blocksLaunch) {
+                    return false
+                }
+            }
+        }
+        return true
+    }
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `app/src/main/java/com/dd/sitelog/di/CoreModule.kt`
+Binds the `:core` helpers once for the whole app.
+
+<b>Explain</b> · `@Provides` functions live in `:app`, so `:core` never imports Hilt. `@Singleton` keeps one instance.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.di
+
+import com.dd.sitelog.BuildConfig
+import com.dd.sitelog.core.clock.AppClock
+import com.dd.sitelog.core.clock.DeviceClock
+import com.dd.sitelog.core.logger.AppLogger
+import com.dd.sitelog.core.logger.LogcatAppLogger
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
+
+@Module
+@InstallIn(SingletonComponent::class)
+object CoreModule {
+    @Provides
+    @Singleton
+    fun appClock(): AppClock {
+        return DeviceClock()
+    }
+
+    @Provides
+    @Singleton
+    fun appLogger(): AppLogger {
+        return LogcatAppLogger(isDebugBuild = BuildConfig.DEBUG)
+    }
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `app/src/main/java/com/dd/sitelog/di/StartupModule.kt`
+Builds the startup sequence from its steps; later features add steps here (database, upload reconcile, audit verify).
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.di
+
+import com.dd.sitelog.core.logger.AppLogger
+import com.dd.sitelog.startup.StartupSequence
+import com.dd.sitelog.startup.StartupStep
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
+
+@Module
+@InstallIn(SingletonComponent::class)
+object StartupModule {
+    @Provides
+    fun startupSequence(logger: AppLogger): StartupSequence {
+        val steps: List<StartupStep> = emptyList()
+        return StartupSequence(steps = steps, logger = logger)
+    }
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `core/src/test/kotlin/com/dd/sitelog/core/clock/FixedClock.kt` + `app/src/test/.../startup/StartupSequenceTest.kt`
+A clock tests control, and the first test: a failing blocking step stops launch.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+class FixedClock(
+    var nowValue: Instant,
+    var elapsedValueMs: Long,
+) : AppClock {
+    override fun now(): Instant {
+        return nowValue
+    }
+
+    override fun elapsedRealtimeMs(): Long {
+        return elapsedValueMs
+    }
+}
+```
+
+```kotlin
+class StartupSequenceTest {
+    @Test
+    fun blockingStepFailureStopsLaunch() = runTest {
+        val failing = object : StartupStep {
+            override val name: String = "database"
+            override val blocksLaunch: Boolean = true
+
+            override suspend fun run() {
+                throw IllegalStateException("cannot open")
+            }
+        }
+        val sequence = StartupSequence(steps = listOf(failing), logger = RecordingLogger())
+
+        val ready: Boolean = sequence.run()
+
+        assertThat(ready).isFalse()
+    }
+}
+```
+
+</details>
+
+</dd></dl>
+
+</dd></dl>
+
+## 2. PR checks
+
+<dl><dd>
+
+#### Overview
+
+<dl><dd>
+
+- **Goal:** every PR and push to `main` builds, tests and lints on GitHub's Linux runners.
+
+| File | Holds |
+|---|---|
+| `.github/workflows/pr-checks.yml` | Job `guards` (scripts, Gitleaks, Spotless, detekt) → job `build` (assemble, unit tests, lint) |
+
+```mermaid
+flowchart LR
+    PR["PR / push main"] --> G["guards<br/>ubuntu"] --> B["build + test + lint<br/>ubuntu"]
+```
+
+- **Check:** open a PR with a `println(` → `guards` fails; remove it → green.
+
+</dd></dl>
+
