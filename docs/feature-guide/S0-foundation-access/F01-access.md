@@ -926,3 +926,270 @@ flowchart LR
 
 </dd></dl>
 
+#### Build
+
+<dl><dd>
+
+<b>File</b> · <b class="tag-new">New</b> · `core/src/main/kotlin/com/dd/sitelog/core/crypto/PasscodeHasher.kt`
+Turns a passcode into a slow salted hash; the passcode itself is never stored.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.core.crypto
+
+import java.security.MessageDigest
+import java.security.SecureRandom
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.PBEKeySpec
+
+class PasscodeHasher(
+    private val rounds: Int = 210_000,
+    private val saltBytes: Int = 16,
+) {
+    fun newSalt(): ByteArray {
+        val salt = ByteArray(saltBytes)
+        SecureRandom().nextBytes(salt)
+        return salt
+    }
+
+    fun hash(passcode: String, salt: ByteArray): ByteArray {
+        val spec = PBEKeySpec(passcode.toCharArray(), salt, rounds, KEY_LENGTH_BITS)
+        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+        val hash: ByteArray = factory.generateSecret(spec).encoded
+        spec.clearPassword()
+        return hash
+    }
+
+    fun matches(passcode: String, salt: ByteArray, expectedHash: ByteArray): Boolean {
+        val actual: ByteArray = hash(passcode, salt)
+        return MessageDigest.isEqual(actual, expectedHash)
+    }
+
+    private companion object {
+        const val KEY_LENGTH_BITS: Int = 256
+    }
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `platformkit/src/main/kotlin/com/dd/sitelog/platformkit/biometrics/BiometricAuthenticator.kt`
+Shows the system biometric prompt and suspends until the user answers; generic, knows nothing about passcodes.
+
+<b>Explain</b> · `BiometricPrompt` reports through callbacks on the main thread; `suspendCancellableCoroutine` turns that into one `suspend fun`. A `CryptoObject` over a Keystore key invalidated by new enrollments tells us when fingerprints changed.
+
+<details>
+<summary><b>Hint</b></summary>
+
+- `BiometricManager.from(context).canAuthenticate(BIOMETRIC_STRONG) == BIOMETRIC_SUCCESS` → available.
+- `onAuthenticationSucceeded` → `true`; `onAuthenticationError` with `ERROR_NEGATIVE_BUTTON` or `ERROR_USER_CANCELED` → `false`; other errors → throw `BiometricException`.
+- `onAuthenticationFailed` is one bad finger, not the end: ignore it.
+
+</details>
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.platformkit.biometrics
+
+import android.content.Context
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyPermanentlyInvalidatedException
+import android.security.keystore.KeyProperties
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.fragment.app.FragmentActivity
+import com.dd.sitelog.platformkit.activity.CurrentActivityProvider
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.CancellableContinuation
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+
+class BiometricAuthenticator(
+    private val context: Context,
+    private val currentActivityProvider: CurrentActivityProvider,
+    private val keyAlias: String,
+) : BiometricAuthenticating {
+    override fun canAuthenticate(): Boolean {
+        val result: Int =
+            BiometricManager
+                .from(context)
+                .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+        return result == BiometricManager.BIOMETRIC_SUCCESS
+    }
+
+    override suspend fun authenticate(title: String, cancelLabel: String): Boolean {
+        val activity: FragmentActivity =
+            currentActivityProvider.current()
+                ?: throw BiometricException.NoActivity
+
+        val cipher: Cipher =
+            try {
+                initCipher()
+            } catch (exception: KeyPermanentlyInvalidatedException) {
+                deleteKey()
+                throw BiometricException.EnrollmentChanged
+            }
+
+        val info =
+            BiometricPrompt.PromptInfo
+                .Builder()
+                .setTitle(title)
+                .setNegativeButtonText(cancelLabel)
+                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                .build()
+
+        return withContext(Dispatchers.Main) {
+            suspendCancellableCoroutine { continuation ->
+                val prompt = BiometricPrompt(activity, callbackFor(continuation))
+                prompt.authenticate(info, BiometricPrompt.CryptoObject(cipher))
+                continuation.invokeOnCancellation {
+                    prompt.cancelAuthentication()
+                }
+            }
+        }
+    }
+
+    // Turns the prompt's callbacks into one answer: true, false (user chose), or an error
+    private fun callbackFor(
+        continuation: CancellableContinuation<Boolean>,
+    ): BiometricPrompt.AuthenticationCallback = object : BiometricPrompt.AuthenticationCallback() {
+        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+            continuation.resume(true)
+        }
+
+        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+            val isUserChoice: Boolean =
+                errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
+                    errorCode == BiometricPrompt.ERROR_USER_CANCELED
+            if (isUserChoice) {
+                continuation.resume(false)
+            } else {
+                continuation.resumeWithException(BiometricException.System(errorCode))
+            }
+        }
+    }
+
+    private fun initCipher(): Cipher {
+        val cipher: Cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
+        return cipher
+    }
+
+    private fun getOrCreateKey(): SecretKey {
+        val keyStore: KeyStore = KeyStore.getInstance(KEYSTORE)
+        keyStore.load(null)
+        val existing = keyStore.getKey(keyAlias, null)
+        if (existing is SecretKey) {
+            return existing
+        }
+        val spec =
+            KeyGenParameterSpec
+                .Builder(
+                    keyAlias,
+                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+                ).setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setUserAuthenticationRequired(true)
+                .setInvalidatedByBiometricEnrollment(true)
+                .build()
+        val generator: KeyGenerator =
+            KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE)
+        generator.init(spec)
+        return generator.generateKey()
+    }
+
+    private fun deleteKey() {
+        val keyStore: KeyStore = KeyStore.getInstance(KEYSTORE)
+        keyStore.load(null)
+        keyStore.deleteEntry(keyAlias)
+    }
+
+    private companion object {
+        const val KEYSTORE: String = "AndroidKeyStore"
+        const val TRANSFORMATION: String = "AES/GCM/NoPadding"
+    }
+}
+```
+
+- The callback lives in its own `callbackFor(continuation)` function: nested inside `suspendCancellableCoroutine` its lines pass 100 characters.
+- The prompt's title and button text come from `strings.xml`: `BiometricLocalDataSourceImpl` receives them already resolved through its constructor (from `di/`), because `:platformkit` has no app strings.
+
+</details>
+
+</dd></dl>
+
+#### Steps
+
+<dl><dd>
+
+1. `KeystoreSecureStore`: create (once) an AES-256-GCM key in `AndroidKeyStore` under `SecurityConstants.SECRETS_KEY_ALIAS`; each value is encrypted with a fresh IV and stored as Base64 `iv:ciphertext` in a Preferences DataStore named `secrets` (`filesDir/datastore/secrets.preferences_pb`).
+2. `AccessLocalDataSourceImpl`: `savePasscode` → new salt + hash → secure store; `verifyPasscode` → `PasscodeHasher.matches`; wrong tries in the secure store, so killing the app does not reset them.
+3. Settings as JSON (`AccessSettingModel`, kotlinx.serialization) in a Preferences DataStore under one key.
+4. Enrollment change: the authenticator throws `EnrollmentChanged`, the data source lets it go up, the repository's existing `catch` returns `BiometricsUnavailable`, A1 falls back to A3; S4 turns biometrics off on next load.
+5. Forgot passcode: device-credential check (`BiometricPrompt` with `DEVICE_CREDENTIAL` on API 30+, `KeyguardManager.createConfirmDeviceCredentialIntent` on 29), then S5 — a new method through every layer, not a swap.
+6. `data_extraction_rules.xml` excludes `datastore/` from backup: a restored phone starts with the lock off, never with a passcode it cannot check.
+
+</dd></dl>
+
+#### Done when
+
+<dl><dd>
+
+- Process death and relaunch keep the passcode, settings and lockout
+- A new fingerprint enrolled in Settings turns biometrics off and asks for the passcode
+- No file outside `datasources/`, `core/crypto/`, `platformkit/` and `di/` changed (forgot passcode aside)
+
+</dd></dl>
+
+</dd></dl>
+
+## Tests (after the feature works)
+
+<dl><dd>
+
+**1. Domain**
+
+- `SaveAccessSettingUseCase` rejects biometrics on with the lock off
+
+**2. Repository** (`data/src/test`, test doubles of both data sources)
+
+- Correct passcode resets wrong tries
+- 4 wrong → `Wrong(1)`; 5th wrong → `LockedOut(60_000)`
+- Data source throws → `Failure(StorageUnavailable)`; biometric throws → `Failure(BiometricsUnavailable)`
+- A thrown `CancellationException` is not turned into a failure
+
+**3. View models** (`app/src/test`, Turbine, `Dispatchers.setMain`)
+
+- `RootViewModel`: first launch → `SignIn`; lock on → `Locked`; away just under *Lock after* stays `Unlocked`, at the value → `Locked` (`FixedClock`)
+- `PasscodeUnlockViewModel`: sixth digit triggers the check; wrong shows tries left
+
+**4. Local** (Robolectric)
+
+- `PasscodeHasher` round-trip; wrong passcode rejected; same passcode, two salts → two hashes
+- Wrong tries survive a new data source instance over the same files
+
+</dd></dl>
+
+## Feature done
+
+<dl><dd>
+
+| Check | How |
+|---|---|
+| Demo | Flow table top to bottom on a real phone; Recents shows a blank card while locked |
+| Tests | `./gradlew testDebugUnitTest` green |
+| Roadmap | F01 steps ticked |
+
+</dd></dl>
