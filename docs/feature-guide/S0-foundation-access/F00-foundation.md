@@ -656,3 +656,266 @@ flowchart TD
 
 </dd></dl>
 
+#### Build
+
+<dl><dd>
+
+<b>File</b> · <b class="tag-new">New</b> · `domain/build.gradle.kts`
+A plain Kotlin module: the compiler itself stops Domain from touching Android.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+plugins {
+    id("sitelog.jvm.library")
+    alias(libs.plugins.kotlin.serialization)
+}
+
+dependencies {
+    api(libs.kotlinx.coroutines.core)
+    api(libs.kotlinx.serialization.core)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.truth)
+    testImplementation(libs.kotlinx.coroutines.test)
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `data/build.gradle.kts`
+The data layer: sees Domain, PlatformKit and Core, never the app.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+plugins {
+    id("sitelog.android.library")
+    alias(libs.plugins.kotlin.serialization)
+}
+
+android {
+    namespace = "com.dd.sitelog.data"
+}
+
+dependencies {
+    implementation(project(":domain"))
+    implementation(project(":platformkit"))
+    implementation(project(":core"))
+    implementation(libs.kotlinx.serialization.json)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.truth)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.robolectric)
+}
+```
+
+- `:platformkit`, `:core` and `:designsystem` look the same with their own `namespace` and dependencies (from the table above).
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `app/build.gradle.kts`
+The app: links every module; only `di/` and `startup/` may use `:data` and `:platformkit`.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+plugins {
+    id("sitelog.android.application")
+    id("sitelog.compose")
+    id("sitelog.hilt")
+    alias(libs.plugins.kotlin.serialization)
+}
+
+android {
+    namespace = "com.dd.sitelog"
+    defaultConfig {
+        applicationId = "com.dd.sitelog"
+        versionCode = 1
+        versionName = "0.1.0"
+    }
+}
+
+dependencies {
+    implementation(project(":core"))
+    implementation(project(":domain"))
+    implementation(project(":data"))
+    implementation(project(":platformkit"))
+    implementation(project(":designsystem"))
+
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.fragment)
+    implementation(libs.compose.material.icons.core)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.process)
+    implementation(libs.androidx.lifecycle.viewmodel.navigation3)
+    implementation(libs.androidx.navigation3.runtime)
+    implementation(libs.androidx.navigation3.ui)
+    implementation(libs.hilt.lifecycle.viewmodel.compose)
+    implementation(libs.kotlinx.serialization.json)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.truth)
+    testImplementation(libs.turbine)
+    testImplementation(libs.kotlinx.coroutines.test)
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `core/src/main/kotlin/com/dd/sitelog/core/clock/AppClock.kt`
+The clock every layer asks for the time, so tests can fix it.
+
+<b>Explain</b> · Two times: wall time (`now`, can be changed in Settings) and elapsed time since boot (`elapsedRealtimeMs`, never jumps). App lock and trusted time need the second.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.core.clock
+
+import java.time.Instant
+
+interface AppClock {
+    fun now(): Instant
+
+    fun elapsedRealtimeMs(): Long
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `core/src/main/kotlin/com/dd/sitelog/core/clock/DeviceClock.kt`
+The real clock. Not named `SystemClock`, which is Android's own class.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.core.clock
+
+import android.os.SystemClock
+import java.time.Instant
+
+class DeviceClock : AppClock {
+    override fun now(): Instant {
+        return Instant.now()
+    }
+
+    override fun elapsedRealtimeMs(): Long {
+        return SystemClock.elapsedRealtime()
+    }
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `core/src/main/kotlin/com/dd/sitelog/core/logger/AppLogger.kt`
+The only way to log. One category per area; release builds drop `debug` lines.
+
+<b>Explain</b> · An interface so tests can collect log lines; `LogcatAppLogger` writes to Logcat with the tag `SiteLog/<category>`.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.core.logger
+
+enum class LogCategory(val tag: String) {
+    APP("app"),
+    ACCESS("access"),
+    CAPTURE("capture"),
+    UPLOAD("upload"),
+    SYNC("sync"),
+    REPORT("report"),
+    PLANS("plans"),
+    DEVICE_LINK("devicelink"),
+    SECURITY("security"),
+}
+
+interface AppLogger {
+    fun debug(category: LogCategory, message: String)
+
+    fun info(category: LogCategory, message: String)
+
+    fun error(category: LogCategory, message: String, throwable: Throwable?)
+}
+```
+
+```kotlin
+package com.dd.sitelog.core.logger
+
+import android.util.Log
+
+class LogcatAppLogger(private val isDebugBuild: Boolean) : AppLogger {
+    override fun debug(category: LogCategory, message: String) {
+        if (isDebugBuild) {
+            Log.d(tagFor(category), message)
+        }
+    }
+
+    override fun info(category: LogCategory, message: String) {
+        Log.i(tagFor(category), message)
+    }
+
+    override fun error(category: LogCategory, message: String, throwable: Throwable?) {
+        Log.e(tagFor(category), message, throwable)
+    }
+
+    private fun tagFor(category: LogCategory): String {
+        return "SiteLog/" + category.tag
+    }
+}
+```
+
+- This file is the one place allowed to call `Log.*` (the CI guard skips it).
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `domain/src/main/kotlin/com/dd/sitelog/domain/Outcome.kt`
+Success or a typed failure: what every repository and use case returns (Swift's `Result` on iOS).
+
+<details>
+<summary><b>Hint</b></summary>
+
+- A `sealed interface` with two `data class`es; `out` on both type parameters lets a `Failure<AccessError>` be used where `Outcome<AccessSetting, AccessError>` is expected.
+- `map` changes the success value; `flatMap` chains a second step that can also fail.
+
+</details>
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.domain
+
+sealed interface Outcome<out T, out E> {
+    data class Success<out T>(val value: T) : Outcome<T, Nothing>
+
+    data class Failure<out E>(val error: E) : Outcome<Nothing, E>
+}
+
+inline fun <T, E, R> Outcome<T, E>.map(transform: (T) -> R): Outcome<R, E> {
+    return when (this) {
+        is Outcome.Success -> Outcome.Success(transform(value))
+        is Outcome.Failure -> this
+    }
+}
+
