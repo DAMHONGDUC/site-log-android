@@ -251,3 +251,270 @@ object HashConstants {
 | Carry-over of open issues; pairing and closure by verification photo | |
 | Phrase library, on-device dictation, voice notes | |
 
+### 03.1 Flows
+
+<dl><dd>
+
+```
+Log:     Capture → shoot → [Attach issue] → ModalBottomSheet (description, severity=MAJOR,
+         assignee, due, 🎤 dictate · 🔊 voice note · 📍 pin) → Save → back to camera
+Verify:  New session → location → banner "3 open issues from 12 Aug" → issue
+         → [Shoot verification] with prior photo at 30% overlay → [Resolved] [Still open] [Worse]
+Close:   new Issue (status VERIFIED, verification photo); old.resolvedByIssueId = new.id,
+         old.status = RESOLVED; original captures never touched
+```
+
+| Decision | Reason |
+|---|---|
+| Bottom sheet over the camera, camera stays bound | Rebinding CameraX costs ~0.5–1 s |
+| Default severity `MAJOR` | Defaulting to minor makes everything minor |
+| `assigneeName` is free text | A name that groups the PDF is what gets used on site |
+| 30% overlay (`Image` with `alpha = 0.3f` over the preview) | Without it the angles differ and the pair is worthless |
+
+- Phrase library: ~30 seeded phrases; new typed phrases added; sorted by usage; synced via the backend's `phrases` table.
+
+</dd></dl>
+
+### 03.2 Design
+
+<dl><dd>
+
+```kotlin
+data class IssuePairing(
+    val previous: IssueSnapshot,
+    val current: IssueSnapshot?,
+    val outcome: PairingOutcome, // RESOLVED / STILL_OPEN / WORSENED
+)
+
+object IssueDefaults {
+    val SEVERITY: IssueSeverity = IssueSeverity.MAJOR
+    const val DUE_DATE_OFFSET_DAYS: Long = 7
+    const val MAX_CAPTURES_PER_ISSUE: Int = 20
+    const val OVERLAY_OPACITY: Float = 0.30f
+    const val STALE_ISSUE_SESSION_THRESHOLD: Int = 3
+}
+```
+
+- `PairIssuesUseCase` lives in `:domain`, pure Kotlin — the most error-prone logic in the app.
+- Upload priority: critical 100 · major 50 · minor 10 · no issue 5 · video −20.
+
+| Risk | Handling |
+|---|---|
+| Location deleted or renamed between sessions | Delete blocked while open issues exist; rename keeps `id` + audit entry |
+| Verification at the wrong spot | Overlay; the PDF prints `Location.code` under every image |
+| Issues piling up | Past `STALE_ISSUE_SESSION_THRESHOLD` the banner changes color and the PDF gets a section |
+
+**Done**
+
+- One issue with photo in under 20 s, measured
+- Session 2 surfaces exactly the 3 open issues offline
+- Closing leaves the original byte-identical
+
+**Tests**
+
+- Pairing with 0/1/n open issues; skips `VERIFIED`
+- Closing never mutates prior captures
+- Priority across severity × kind
+- Delete-with-open-issues rejected; phrase ordering tie-break
+
+---
+
+</dd></dl>
+
+</dd></dl>
+
+## 06. DeviceLink BLE measuring tools
+
+<dl><dd>
+
+- Module: `:platformkit` `bluetooth/` · mock: a debug-only peripheral screen on a second Android phone ([F13](../feature-guide/S7-checklists-devices-diagnostics/F13-devicelink.md))
+
+**Goal:** scan → connect → read a laser distance or moisture meter (Bosch GLM, Leica DISTO) → attach the reading to a `Capture`.
+
+- BLE for control and small values; files never go over BLE.
+
+```kotlin
+interface DeviceProfile {
+    val serviceUuid: UUID
+    val notifyCharacteristicUuid: UUID
+    fun parse(bytes: ByteArray): DeviceReadingRecord // pure, tested on captured bytes
+}
+
+data class DeviceReadingRecord(
+    val value: Double,
+    val unit: MeasurementUnit, // METER / MILLIMETER / PERCENT_MOISTURE
+    val kind: MeasurementKind, // DISTANCE / AREA / MOISTURE
+    val measuredAt: Instant,
+    val deviceName: String,
+)
+```
+
+- One file per vendor profile; `:data` maps the record to the Domain `DeviceReading`.
+- `adapterOff → adapterOn → scanning → connecting → discoveringServices → ready`; `disconnected` is normal (meters sleep). `DeviceLinkManager` runs every GATT call on one single-thread dispatcher: Android GATT allows one operation at a time.
+- Android BLE rules:
+  - Permissions: `BLUETOOTH_SCAN` (with `neverForLocation`) + `BLUETOOTH_CONNECT` on API 31+; `ACCESS_FINE_LOCATION` on 29–30.
+  - Scan with a `ScanFilter` on the service UUID and `SCAN_MODE_LOW_LATENCY`, stop after `SCAN_TIMEOUT`; never more than 5 scan starts per 30 s (the OS silently blocks).
+  - `connectGatt(context, autoConnect = false, callback, TRANSPORT_LE)`; enable notifications by writing the CCCD descriptor; `close()` the old `BluetoothGatt` before reconnecting (status 133 otherwise).
+  - Reconnect to a known address with `autoConnect = true` after the first success.
+- UX: reading overlays the preview; status is a colored dot, no dialogs; **never blocks capture**. Readings older than `MEASUREMENT_STALE_AFTER` are not attached.
+- The mock (second phone, `BluetoothLeAdvertiser` + `BluetoothGattServer`) scripts invalid values, disconnects and garbage bytes; CI covers `parse` on captured bytes. DeviceLink ships to users only after one real meter passes (feature flag).
+
+```kotlin
+object DeviceLinkConstants {
+    const val SCAN_TIMEOUT_MS: Long = 15_000
+    const val CONNECT_TIMEOUT_MS: Long = 10_000
+    const val RECONNECT_BASE_DELAY_MS: Long = 2_000
+    const val RECONNECT_MAX_DELAY_MS: Long = 60_000
+    const val MINIMUM_RSSI: Int = -85
+    const val MEASUREMENT_STALE_AFTER_MS: Long = 30_000
+    const val BACKGROUND_DISCONNECT_DELAY_MS: Long = 300_000
+}
+```
+
+**Risks**
+
+- No hardware for byte formats → start on the mock and ship a raw-bytes "generic" profile
+- Permission denied → feature hides itself
+- Battery → no background scanning
+
+**Done**
+
+- Reads from the mock into a capture
+- Killing the mock greys the dot, capture still works
+- Relaunch reconnects within 10 s
+
+**Tests**
+
+- Vendor `parse` on real bytes; truncated / bad-checksum payloads throw
+- Unit conversion; stale reading not attached
+- Reconnect backoff capped
+- Full flow against the mock
+
+---
+
+</dd></dl>
+
+## 11. Floor plans and issue pins
+
+<dl><dd>
+
+- Modules: `:platformkit` `rendering/` (tiles), `:data` `datasources/local/filestorage` (plan files), `:app` `presentation/plans`
+
+**Goal:** import a floor plan, pin issues at exact coordinates, print a pin map per sheet.
+
+- Out: DWG/CAD, measuring, plan editing.
+
+```kotlin
+@Entity(
+    tableName = "plan_sheets",
+    foreignKeys = [ForeignKey(entity = ProjectModel::class, parentColumns = ["id"], childColumns = ["projectId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("projectId")],
+)
+data class PlanSheetModel(
+    @PrimaryKey val id: String,
+    val projectId: String,
+    val name: String,
+    val sourceFilePath: String,
+    val pageIndex: Int,
+    val pixelWidth: Int,
+    val pixelHeight: Int,
+    val sha256: String,
+    val locationId: String?,
+)
+```
+
+- The pin lives on the issue row (`planSheetId`, `pinX`, `pinY`), matching the backend.
+- **Coordinates are 0…1, never pixels**, so pins survive re-rendering at any scale. `Offset` only inside `presentation/plans`.
+- One pin per issue; every move writes an audit entry.
+- Rendering: tiles on demand (A0 at 300 dpi never becomes one bitmap): `PdfRenderer.Page.render(bitmap, destClip, transform, RENDER_MODE_FOR_DISPLAY)` per 512 px tile, `BitmapRegionDecoder` for JPEG/PNG plans; tile cache in `cacheDir/plans/`; Compose `Canvas` draws visible tiles; pins in an overlay `Box`.
+- Interaction: `detectTransformGestures` for pan/zoom; **long-press drops a pin** (tap is for panning), tap opens the issue, drag confirms on release. Pins colored by severity, hollow when resolved, clustered below `CLUSTER_ZOOM_THRESHOLD`.
+- Import: Storage Access Framework (`ActivityResultContracts.OpenDocument`, `application/pdf`, `image/*`) or a share intent; the file is copied into `filesDir/plans/`, hashed, uploaded at low priority, capped at `MAX_PLAN_FILE_BYTES`.
+
+```kotlin
+object PlanConstants {
+    const val MAX_PLAN_FILE_BYTES: Long = 100L * 1024 * 1024
+    const val MAX_ZOOM_SCALE: Float = 8f
+    const val CLUSTER_ZOOM_THRESHOLD: Float = 2f
+    const val CLUSTER_RADIUS_DP: Float = 24f
+    const val PIN_DROP_LONG_PRESS_MS: Long = 400
+    const val TILE_SIZE_PX: Int = 512
+    const val UPLOAD_PRIORITY: Int = 1
+}
+```
+
+| Risk | Handling |
+|---|---|
+| Revised drawing | New `PlanSheet`, offer to migrate pins by normalized coordinate, keep the old sheet |
+| Encrypted or corrupt PDF | `PdfRenderer` throws `SecurityException` / `IOException` → rejected at import with the reason |
+| Pin on the wrong sheet | Sheet name in the top bar and under every pin map |
+
+**Done**
+
+- 20-page A1 PDF, 50 pins, smooth pan/zoom
+- A0 peak memory under 150 MB (Memory Profiler)
+- Pins land on the same spot after relaunch at a different zoom
+- Fully offline
+
+**Tests**
+
+- Normalized point round-trip through zoom/pan; same point at two scales
+- Clustering; oversized and encrypted imports rejected
+- Pin migration; sheet delete blocked while pins exist
+
+---
+
+</dd></dl>
+
+## 12. Annotation and verifiable stamps
+
+<dl><dd>
+
+- Modules: `:platformkit` `rendering/` (stamped copies), `:domain` (models)
+
+**Rule:** the original file is never touched; markup is a separate layer; stamps are a derived copy.
+
+### 12.1 Annotation layer
+
+<dl><dd>
+
+```kotlin
+@Serializable data class NormalizedPoint(val x: Double, val y: Double)
+@Serializable data class NormalizedRect(val origin: NormalizedPoint, val width: Double, val height: Double)
+
+@Serializable
+sealed interface AnnotationShape {
+    @Serializable @SerialName("arrow") data class Arrow(val from: NormalizedPoint, val to: NormalizedPoint, val style: AnnotationStyle) : AnnotationShape
+    @Serializable @SerialName("rect") data class Rect(val rect: NormalizedRect, val style: AnnotationStyle) : AnnotationShape
+    @Serializable @SerialName("ellipse") data class Ellipse(val rect: NormalizedRect, val style: AnnotationStyle) : AnnotationShape
+    @Serializable @SerialName("freehand") data class Freehand(val points: List<NormalizedPoint>, val style: AnnotationStyle) : AnnotationShape
+    @Serializable @SerialName("text") data class Text(val text: String, val at: NormalizedPoint, val style: AnnotationTextStyle) : AnnotationShape
+}
+```
+
+- `:domain` is pure JVM, so these use kotlinx.serialization annotations only (the `serialization-core` artifact is allowed in `:domain`); the JSON must match the iOS `shapes` JSON exactly — one sample file is shared in both test suites.
+- `Annotation { id (= capture id), shapes, createdAt, updatedAt }`, 1:1 with a capture.
+- Editor: Arrow (default), Box, Circle, Pen, Text, drawn with Compose `Canvas` + `pointerInput`; stroke scales with image size; undo capped at `MAX_UNDO_STEPS`; commits on exit. Edits write an audit entry.
+
+</dd></dl>
+
+### 12.2 Stamped derivatives
+
+<dl><dd>
+
+- File: `filesDir/derived/<…>/<captureId>-stamped.jpg`, drawn with `android.graphics.Canvas` on a downsampled bitmap (`ImageDecoder` target size `DERIVED_IMAGE_MAX_PIXEL_SIZE`).
+- Carries date/time, coordinates and accuracy, project, location code, logo.
+- Generated on demand, cached; never hashed, never evidence.
+
+</dd></dl>
+
+### 12.3 Dictation and voice notes
+
+<dl><dd>
+
+- API 31+: `SpeechRecognizer.createOnDeviceSpeechRecognizer(context)` — site audio never leaves the device; check `SpeechRecognizer.isOnDeviceRecognitionAvailable`.
+- API 29–30 or no on-device model: the mic button opens the phrase library instead; never fall back to cloud recognition.
+- Vietnamese (`vi-VN`) and English; language packs may need a download, offered once.
+- A voice note is an ordinary audio `Capture`; dictated text lands in `Issue.detail`.
+
+</dd></dl>
+
