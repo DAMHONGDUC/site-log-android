@@ -307,3 +307,268 @@ flowchart LR
 
 </dd></dl>
 
+#### Build
+
+<dl><dd>
+
+<b>File</b> · <b class="tag-new">New</b> · `data/src/main/kotlin/com/dd/sitelog/data/datasources/local/access/AccessLocalDataSource.kt`
+Storage for the access flow; returns stored models, never entities; throws on failure.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.data.datasources.local.access
+
+import com.dd.sitelog.data.models.local.AccessSettingModel
+
+interface AccessLocalDataSource {
+    suspend fun loadSetting(): AccessSettingModel
+
+    suspend fun saveSetting(model: AccessSettingModel)
+
+    suspend fun verifyPasscode(inputPasscode: String): Boolean
+
+    suspend fun savePasscode(newPasscode: String)
+
+    suspend fun loadWrongTries(): Int
+
+    suspend fun saveWrongTries(count: Int)
+
+    suspend fun deleteAll()
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `data/src/main/kotlin/com/dd/sitelog/data/datasources/local/access/AccessLocalDataSourceImpl.kt`
+In-memory values until step 4; a `Mutex` keeps two coroutines from editing them at once.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.data.datasources.local.access
+
+import com.dd.sitelog.data.models.local.AccessSettingModel
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+class AccessLocalDataSourceImpl : AccessLocalDataSource {
+    private val mutex = Mutex()
+    private var setting: AccessSettingModel = AccessSettingModel.firstLaunch()
+    private var passcode: String? = null
+    private var wrongTries: Int = 0
+
+    override suspend fun loadSetting(): AccessSettingModel {
+        return mutex.withLock { setting }
+    }
+
+    override suspend fun saveSetting(model: AccessSettingModel) {
+        mutex.withLock {
+            setting = model
+        }
+    }
+
+    override suspend fun verifyPasscode(inputPasscode: String): Boolean {
+        return mutex.withLock {
+            val stored: String? = passcode
+            if (stored == null) {
+                false
+            } else {
+                stored == inputPasscode
+            }
+        }
+    }
+
+    override suspend fun savePasscode(newPasscode: String) {
+        mutex.withLock {
+            passcode = newPasscode
+        }
+    }
+
+    override suspend fun loadWrongTries(): Int {
+        return mutex.withLock { wrongTries }
+    }
+
+    override suspend fun saveWrongTries(count: Int) {
+        mutex.withLock {
+            wrongTries = count
+        }
+    }
+
+    override suspend fun deleteAll() {
+        mutex.withLock {
+            setting = AccessSettingModel.firstLaunch()
+            passcode = null
+            wrongTries = 0
+        }
+    }
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `data/src/main/kotlin/com/dd/sitelog/data/repositories/AccessRepositoryImpl.kt`
+The real repository: counts wrong tries, maps models, turns every exception into `AccessError`, logs every action.
+
+<b>Explain</b> · Same rules as iOS `AccessRepositoryImpl`. Each method: `try` the data source → `Outcome.Success`; `catch` → log → `Outcome.Failure`. `CancellationException` is rethrown so coroutines can cancel.
+
+<details>
+<summary><b>Hint</b></summary>
+
+- Wrong tries: load, add 1, save; `triesLeft = FREE_TRIES - wrongTries`; above 0 → `Wrong`, else `LockedOut`.
+- A helper `rethrowIfCancelled(exception)` keeps each `catch` short.
+- A `logger` call that does not fit in 100 characters puts one argument per line.
+
+</details>
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.data.repositories
+
+import com.dd.sitelog.core.logger.AppLogger
+import com.dd.sitelog.core.logger.LogCategory
+import com.dd.sitelog.data.datasources.local.access.AccessLocalDataSource
+import com.dd.sitelog.data.datasources.local.biometrics.BiometricLocalDataSource
+import com.dd.sitelog.data.mappers.AccessSettingMapper
+import com.dd.sitelog.domain.Outcome
+import com.dd.sitelog.domain.entities.access.AccessError
+import com.dd.sitelog.domain.entities.access.AccessSetting
+import com.dd.sitelog.domain.entities.access.PasscodeCheck
+import com.dd.sitelog.domain.repositories.AccessRepository
+import kotlin.coroutines.cancellation.CancellationException
+
+class AccessRepositoryImpl(
+    private val accessLocalDataSource: AccessLocalDataSource,
+    private val biometricLocalDataSource: BiometricLocalDataSource,
+    private val logger: AppLogger,
+) : AccessRepository {
+    override suspend fun loadAccessSetting(): Outcome<AccessSetting, AccessError> {
+        try {
+            val model = accessLocalDataSource.loadSetting()
+            val setting = AccessSettingMapper.toEntity(model)
+            return Outcome.Success(setting)
+        } catch (exception: Exception) {
+            rethrowIfCancelled(exception)
+            logger.error(
+                LogCategory.ACCESS,
+                "Load access setting failed → StorageUnavailable",
+                exception,
+            )
+            return Outcome.Failure(AccessError.StorageUnavailable)
+        }
+    }
+
+    override suspend fun saveAccessSetting(newSetting: AccessSetting): Outcome<Unit, AccessError> {
+        try {
+            val model = AccessSettingMapper.toModel(newSetting)
+            accessLocalDataSource.saveSetting(model)
+            logger.info(
+                LogCategory.ACCESS,
+                "Access setting saved — {lockOn: ${newSetting.isLockOn}}",
+            )
+            return Outcome.Success(Unit)
+        } catch (exception: Exception) {
+            rethrowIfCancelled(exception)
+            logger.error(
+                LogCategory.ACCESS,
+                "Save access setting failed → StorageUnavailable",
+                exception,
+            )
+            return Outcome.Failure(AccessError.StorageUnavailable)
+        }
+    }
+
+    override suspend fun markWelcomeScreen(): Outcome<Unit, AccessError> {
+        try {
+            val model = accessLocalDataSource.loadSetting()
+            accessLocalDataSource.saveSetting(model.copy(isShowWelcomeScreen = true))
+            logger.info(LogCategory.ACCESS, "Welcome screen marked as shown")
+            return Outcome.Success(Unit)
+        } catch (exception: Exception) {
+            rethrowIfCancelled(exception)
+            logger.error(
+                LogCategory.ACCESS,
+                "Mark welcome screen failed → StorageUnavailable",
+                exception,
+            )
+            return Outcome.Failure(AccessError.StorageUnavailable)
+        }
+    }
+
+    override suspend fun checkPasscode(inputPasscode: String): Outcome<PasscodeCheck, AccessError> {
+        try {
+            val isCorrect: Boolean = accessLocalDataSource.verifyPasscode(inputPasscode)
+
+            // correct
+            if (isCorrect) {
+                accessLocalDataSource.saveWrongTries(0)
+                logger.info(LogCategory.ACCESS, "Passcode correct")
+                return Outcome.Success(PasscodeCheck.Correct)
+            }
+
+            // wrong
+            val wrongTries: Int = accessLocalDataSource.loadWrongTries() + 1
+            accessLocalDataSource.saveWrongTries(wrongTries)
+            val triesLeft: Int = FREE_TRIES - wrongTries
+            if (triesLeft > 0) {
+                logger.info(LogCategory.ACCESS, "Wrong passcode — {triesLeft: $triesLeft}")
+                return Outcome.Success(PasscodeCheck.Wrong(triesLeft))
+            }
+
+            // lockout
+            logger.info(LogCategory.ACCESS, "Passcode locked out — {waitMs: $LOCKOUT_WAIT_MS}")
+            return Outcome.Success(PasscodeCheck.LockedOut(LOCKOUT_WAIT_MS))
+        } catch (exception: Exception) {
+            rethrowIfCancelled(exception)
+            logger.error(
+                LogCategory.ACCESS,
+                "Check passcode failed → StorageUnavailable",
+                exception,
+            )
+            return Outcome.Failure(AccessError.StorageUnavailable)
+        }
+    }
+
+    override suspend fun setPasscode(newPasscode: String): Outcome<Unit, AccessError> {
+        try {
+            accessLocalDataSource.savePasscode(newPasscode)
+            accessLocalDataSource.saveWrongTries(0)
+            logger.info(LogCategory.ACCESS, "Passcode changed")
+            return Outcome.Success(Unit)
+        } catch (exception: Exception) {
+            rethrowIfCancelled(exception)
+            logger.error(LogCategory.ACCESS, "Set passcode failed → StorageUnavailable", exception)
+            return Outcome.Failure(AccessError.StorageUnavailable)
+        }
+    }
+
+    override suspend fun unlockWithBiometrics(): Outcome<Boolean, AccessError> {
+        try {
+            val isMatched: Boolean = biometricLocalDataSource.authenticate()
+            logger.info(LogCategory.ACCESS, "Biometrics answered — {matched: $isMatched}")
+            return Outcome.Success(isMatched)
+        } catch (exception: Exception) {
+            rethrowIfCancelled(exception)
+            logger.error(LogCategory.ACCESS, "Biometrics failed → BiometricsUnavailable", exception)
+            return Outcome.Failure(AccessError.BiometricsUnavailable)
+        }
+    }
+
+    override suspend fun resetAllData() {
+        try {
+            accessLocalDataSource.deleteAll()
+            logger.info(LogCategory.ACCESS, "Access data reset")
+        } catch (exception: Exception) {
+            rethrowIfCancelled(exception)
+            logger.error(LogCategory.ACCESS, "Reset access data failed", exception)
+        }
+    }
+
