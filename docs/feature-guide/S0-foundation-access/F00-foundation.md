@@ -1312,3 +1312,270 @@ flowchart LR
 
 </dd></dl>
 
+#### Build
+
+<dl><dd>
+
+<b>File</b> · <b class="tag-new">New</b> · `designsystem/src/main/kotlin/com/dd/sitelog/designsystem/tokens/DSColor.kt`
+The colour tokens, in a light and a dark palette; screens read them through `DSColor`.
+
+<b>Explain</b> · Compose has no dynamic `UIColor`: the theme provides the palette for the current mode through a `CompositionLocal`, and `DSColor.textPrimary` reads it.
+
+<details>
+<summary><b>Hint</b></summary>
+
+- `data class DSPalette(...)` with one `Color` per token; two instances (`LightPalette`, `DarkPalette`).
+- `staticCompositionLocalOf { LightPalette }` + getters annotated `@Composable @ReadOnlyComposable`.
+
+</details>
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.designsystem.tokens
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
+
+@Immutable
+data class DSPalette(
+    val canvas: Color,
+    val raised: Color,
+    val fill: Color,
+    val plan: Color,
+    val hairline: Color,
+    val lineStrong: Color,
+    val textPrimary: Color,
+    val textSecondary: Color,
+    val textTertiary: Color,
+    val onPrimary: Color,
+    val hiVis: Color,
+    val onHiVis: Color,
+    val critical: Color,
+    val major: Color,
+    val minor: Color,
+    val success: Color,
+    val waiting: Color,
+)
+
+val LightPalette: DSPalette = DSPalette(
+    canvas = Color(DSHex.argb(0xFFFFFF)),
+    raised = Color(DSHex.argb(0xFFFFFF)),
+    fill = Color(DSHex.argb(0xF3F2EF)),
+    plan = Color(DSHex.argb(0xFBFAF7)),
+    hairline = Color(DSHex.argb(0xE8E5E0)),
+    lineStrong = Color(DSHex.argb(0xCFCAC1)),
+    textPrimary = Color(DSHex.argb(0x16181B)),
+    textSecondary = Color(DSHex.argb(0x63676E)),
+    textTertiary = Color(DSHex.argb(0xA0A3A9)),
+    onPrimary = Color(DSHex.argb(0xFFFFFF)),
+    hiVis = Color(DSHex.argb(0xFFD400)),
+    onHiVis = Color(DSHex.argb(0x1B1700)),
+    critical = Color(DSHex.argb(0xD8342A)),
+    major = Color(DSHex.argb(0xDD7A06)),
+    minor = Color(DSHex.argb(0x3E6FA8)),
+    success = Color(DSHex.argb(0x1D8454)),
+    waiting = Color(DSHex.argb(0x7E838B)),
+)
+
+val DarkPalette: DSPalette = DSPalette(
+    canvas = Color(DSHex.argb(0x0F1011)),
+    raised = Color(DSHex.argb(0x18191B)),
+    fill = Color(DSHex.argb(0x232427)),
+    plan = Color(DSHex.argb(0x1B1C1E)),
+    hairline = Color(DSHex.argb(0x2C2D31)),
+    lineStrong = Color(DSHex.argb(0x3F4045)),
+    textPrimary = Color(DSHex.argb(0xF2F0EC)),
+    textSecondary = Color(DSHex.argb(0xA4A7AD)),
+    textTertiary = Color(DSHex.argb(0x6E7278)),
+    onPrimary = Color(DSHex.argb(0x16181B)),
+    hiVis = Color(DSHex.argb(0xFFD400)),
+    onHiVis = Color(DSHex.argb(0x1B1700)),
+    critical = Color(DSHex.argb(0xFF5B4F)),
+    major = Color(DSHex.argb(0xFFA43D)),
+    minor = Color(DSHex.argb(0x80A9DC)),
+    success = Color(DSHex.argb(0x43C287)),
+    waiting = Color(DSHex.argb(0x8E939B)),
+)
+
+val LocalDSPalette = staticCompositionLocalOf { LightPalette }
+
+object DSColor {
+    val mediaBackdrop: Color = Color.Black
+    val onMedia: Color = Color.White
+    val markup: Color = Color.Red
+
+    val canvas: Color
+        @Composable @ReadOnlyComposable get() = LocalDSPalette.current.canvas
+    val raised: Color
+        @Composable @ReadOnlyComposable get() = LocalDSPalette.current.raised
+    val textPrimary: Color
+        @Composable @ReadOnlyComposable get() = LocalDSPalette.current.textPrimary
+    val textSecondary: Color
+        @Composable @ReadOnlyComposable get() = LocalDSPalette.current.textSecondary
+    val critical: Color
+        @Composable @ReadOnlyComposable get() = LocalDSPalette.current.critical
+    // Waiting is never red
+    val waiting: Color
+        @Composable @ReadOnlyComposable get() = LocalDSPalette.current.waiting
+    // … one getter per palette field
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `designsystem/src/main/kotlin/com/dd/sitelog/designsystem/tokens/DSHex.kt` + test
+Turns a `0xRRGGBB` token into an opaque ARGB `Int`.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.designsystem.tokens
+
+object DSHex {
+    private const val OPAQUE_ALPHA: Long = 0xFF000000
+
+    fun argb(rgb: Long): Int {
+        val withAlpha: Long = OPAQUE_ALPHA or (rgb and 0xFFFFFF)
+        return withAlpha.toInt()
+    }
+}
+```
+
+```kotlin
+class DSHexTest {
+    @Test
+    fun addsOpaqueAlpha() {
+        val value: Int = DSHex.argb(0x16181B)
+
+        assertThat(value).isEqualTo(0xFF16181B.toInt())
+    }
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `designsystem/src/main/kotlin/com/dd/sitelog/designsystem/tokens/DSSpacing.kt`
+Spacing, radii and control sizes in `dp`; names carry the value, like iOS.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.designsystem.tokens
+
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+
+object DSSpacing {
+    val spacing0: Dp = 0.dp
+    val spacing1: Dp = 1.dp
+    val spacing2: Dp = 2.dp
+    val spacing4: Dp = 4.dp
+    val spacing8: Dp = 8.dp
+    val spacing12: Dp = 12.dp
+    val spacing16: Dp = 16.dp
+    val spacing20: Dp = 20.dp
+    val spacing24: Dp = 24.dp
+    val spacing32: Dp = 32.dp
+    // Minimum touch target on Android
+    val spacing48: Dp = 48.dp
+    val spacing52: Dp = 52.dp
+    // … copy every value from the iOS DSSpacing
+}
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `designsystem/src/main/kotlin/com/dd/sitelog/designsystem/tokens/DSTextStyle.kt`
+The 11 text styles in `sp` (they grow with the user's font size).
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.designsystem.tokens
+
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+
+object DSTextStyle {
+    val largeTitle: TextStyle = TextStyle(
+        fontFamily = DSFont.sans,
+        fontSize = 34.sp,
+        fontWeight = FontWeight.Bold,
+        lineHeight = 41.sp,
+    )
+
+    val body: TextStyle = TextStyle(
+        fontFamily = DSFont.sans,
+        fontSize = 17.sp,
+        fontWeight = FontWeight.Normal,
+        lineHeight = 22.sp,
+    )
+
+    val code: TextStyle = TextStyle(
+        fontFamily = FontFamily.Monospace,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Normal,
+        lineHeight = 18.sp,
+    )
+
+    // pageTitle, title, section, headline, subhead, footnote, caption, figure:
+    // the same shape, values from the table in compose-rules.md §5
+}
+```
+
+- `DSFont.sans` is Inter from `designsystem/src/main/res/font/` (`FontFamily(Font(R.font.inter_regular), …)`). Until the font files are added, `val sans: FontFamily = FontFamily.Default` keeps it building.
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `designsystem/src/main/kotlin/com/dd/sitelog/designsystem/theme/SiteLogTheme.kt`
+Wraps the app: chooses the light or dark palette and maps tokens onto Material 3 so stock components look right.
+
+<details>
+<summary><b>Code</b></summary>
+
+```kotlin
+package com.dd.sitelog.designsystem.theme
+
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Typography
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import com.dd.sitelog.designsystem.tokens.DSPalette
+import com.dd.sitelog.designsystem.tokens.DSTextStyle
+import com.dd.sitelog.designsystem.tokens.DarkPalette
+import com.dd.sitelog.designsystem.tokens.LightPalette
+import com.dd.sitelog.designsystem.tokens.LocalDSPalette
+
+@Composable
+fun SiteLogTheme(
+    isDark: Boolean = isSystemInDarkTheme(),
+    content: @Composable () -> Unit,
+) {
+    val palette: DSPalette
+    if (isDark) {
+        palette = DarkPalette
+    } else {
+        palette = LightPalette
+    }
+
