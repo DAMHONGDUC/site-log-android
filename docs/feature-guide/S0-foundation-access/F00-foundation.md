@@ -1124,3 +1124,191 @@ flowchart LR
 
 </dd></dl>
 
+#### Build
+
+<dl><dd>
+
+<b>File</b> · <b class="tag-new">New</b> · `.github/workflows/pr-checks.yml`
+Runs on every PR and every push to `main`; cancels older runs of the same branch.
+
+<details>
+<summary><b>Code</b></summary>
+
+```yaml
+name: PR checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: pr-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: No println
+        run: tools/ci/check-no-println.sh
+      - name: Layer imports
+        run: tools/ci/check-imports.sh
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Format and detekt
+        run: ./gradlew spotlessCheck detekt
+
+  build:
+    needs: guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build, test, lint
+        run: ./gradlew assembleDebug testDebugUnitTest lintDebug
+```
+
+- JDK 25 because `gradle/gradle-daemon-jvm.properties` asks for it; the code still compiles for Java 21.
+- F02 adds a step that copies `google-services.json.example` (a valid dummy config) before the build; real files are written from secrets only in the release lane (F07).
+
+</details>
+
+</dd></dl>
+
+</dd></dl>
+
+## 3. CI guards
+
+<dl><dd>
+
+#### Overview
+
+<dl><dd>
+
+- **Goal:** the rules the compiler cannot check fail CI.
+
+| Script | Fails when |
+|---|---|
+| `tools/ci/check-no-println.sh` | Any `println(` or `Log.` call outside `LogcatAppLogger.kt` |
+| `tools/ci/check-imports.sh` | Presentation imports `com.dd.sitelog.data` / `.platformkit`, or Room, DataStore, OkHttp, WorkManager; `:platformkit` imports `.domain` / `.data` |
+| Gitleaks | A key or token in the diff |
+| `allWarningsAsErrors`, Lint `warningsAsErrors` | Any compiler or Lint warning |
+
+- **Check:** add `import com.dd.sitelog.data.X` in a screen → `check-imports.sh` fails with the file name.
+
+</dd></dl>
+
+#### Build
+
+<dl><dd>
+
+<b>File</b> · <b class="tag-new">New</b> · `tools/ci/check-no-println.sh`
+Fails when Kotlin code prints or logs outside `AppLogger`.
+
+<details>
+<summary><b>Code</b></summary>
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+matches=$(grep -rnE '\bprintln\(|\bLog\.(v|d|i|w|e|wtf)\(' --include='*.kt' \
+  app core domain data platformkit designsystem \
+  | grep -v 'core/src/main/kotlin/com/dd/sitelog/core/logger/LogcatAppLogger.kt' || true)
+
+if [ -n "$matches" ]; then
+  echo "Use AppLogger, never println or Log.*:"
+  echo "$matches"
+  exit 1
+fi
+```
+
+</details>
+
+---
+
+<b>File</b> · <b class="tag-new">New</b> · `tools/ci/check-imports.sh`
+Enforces the layer rules of [00 §4.2](../../feature-docs/00-overview.md#42-layers-and-dependency-rules) that modules alone cannot.
+
+<details>
+<summary><b>Code</b></summary>
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+failed=0
+presentation="app/src/main/java/com/dd/sitelog/presentation"
+
+# Rule 1: Presentation never imports Data or PlatformKit
+if grep -rnE '^import com\.dd\.sitelog\.(data|platformkit)\.' "$presentation"; then
+  echo "Presentation must not import :data or :platformkit"
+  failed=1
+fi
+
+# Rule 2: Presentation never touches storage, network or background work directly
+if grep -rnE '^import (androidx\.room|androidx\.datastore|okhttp3|androidx\.work)\.' "$presentation"; then
+  echo "Presentation must not use Room, DataStore, OkHttp or WorkManager"
+  failed=1
+fi
+
+# Rule 3: PlatformKit is a library: no Domain, no Data
+if grep -rnE '^import com\.dd\.sitelog\.(domain|data)\.' platformkit/src; then
+  echo ":platformkit must not import :domain or :data"
+  failed=1
+fi
+
+exit "$failed"
+```
+
+</details>
+
+</dd></dl>
+
+</dd></dl>
+
+## 4. Design system
+
+<dl><dd>
+
+#### Overview
+
+<dl><dd>
+
+- **Goal:** the same tokens as iOS (`DSColor`, `DSSpacing`, `DSTextStyle`) for Compose, a `SiteLogTheme` that maps them onto Material 3, and a gallery screen.
+
+| File | Holds |
+|---|---|
+| `tokens/DSHex.kt` | `0xRRGGBB` → ARGB `Int` (tested) |
+| `tokens/DSColor.kt` | Light and dark palettes from `docs/design/mockups/index.html` `COLOR_TOKENS` |
+| `tokens/DSSpacing.kt` | `spacing0` … `spacing52` in `dp` (same names as iOS) |
+| `tokens/DSTextStyle.kt` | The 11 text styles in `sp` ([compose rules §5](../../compose-rules.md#5-design-system)) |
+| `theme/SiteLogTheme.kt` | Picks the palette, provides it, builds the Material `ColorScheme` and `Typography` |
+| `components/` | `DSButton`, `DSListRow`, `DSChip`, `DSEmptyState`, `DSSectionHeader`, `DSStatusMarker`, `DSTextField`, `DSConfirmDialog` (skeleton look; F18 finishes them) |
+| `gallery/DSGallery.kt` | Every token and component, previewed light and dark |
+
+```mermaid
+flowchart LR
+    Tokens["DSColor · DSSpacing · DSTextStyle"] --> Theme["SiteLogTheme<br/>MaterialTheme"]
+    Theme --> Comp["DS components"] --> Screens["screens"]
+```
+
+- **Check:** `DSGallery` preview in light and dark; `DSHexTest` passes.
+
+</dd></dl>
+
