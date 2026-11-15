@@ -118,7 +118,7 @@ site-log-android/
 | PDF render / plans | PDFKit, `CATiledLayer` | `PdfDocument` / `PdfRenderer`, Compose tiles |
 | BLE | CoreBluetooth | `android.bluetooth.le` |
 | Speech | `SFSpeechRecognizer` | `SpeechRecognizer` (on-device) |
-| Push | APNs | Firebase Cloud Messaging |
+| Push | Firebase Cloud Messaging → APNs | Firebase Cloud Messaging |
 | Logging | `os.Logger` | `AppLogger` over `android.util.Log` |
 | Lint / format | SwiftLint, swift-format | detekt, ktlint (Spotless), Android Lint |
 | Tests | Swift Testing | JUnit 4, kotlinx-coroutines-test, Turbine, Truth, Robolectric |
@@ -136,7 +136,7 @@ site-log-android/
 | Shared with iOS | Android only |
 |---|---|
 | Product, data model, feature numbers, sprint order | Gradle modules, Hilt, Room, WorkManager |
-| Backend API, sync protocol, upload protocol, WebSocket messages | `POST /devices` gains `platform: "fcm"` ([03-backend §10](docs/feature-docs/03-backend.md#10-push-registration)) |
+| Backend API, sync protocol, upload protocol, WebSocket messages, FCM push (`POST /devices`, [03-backend §10](docs/feature-docs/03-backend.md#10-push-registration)) | `platform: "android"` gets a data-only FCM message |
 | Firebase project (`sitelog-dev`, `sitelog-prod`) | An Android app in each Firebase project, SHA-1/SHA-256 fingerprints |
 | Design plan, mockups, Figma | Material 3 components, 48 dp touch targets |
 | Backend guides in site-log-be | Emulator reaches the Mac at `10.0.2.2`, not `localhost` |
