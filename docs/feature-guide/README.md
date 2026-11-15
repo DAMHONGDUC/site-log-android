@@ -3,7 +3,7 @@
 <dl><dd>
 
 - Step-by-step guides, grouped by sprint: one folder per sprint, one guide per feature — same numbers as the [iOS guides](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/feature-guide/README.md).
-- 1 developer · 2-week sprints · 10 sprints · ~467h. Progress is ticked in [ROADMAP.md](../ROADMAP.md).
+- 1 developer · 2-week sprints · 10 sprints · ~464h. Progress is ticked in [ROADMAP.md](../ROADMAP.md).
 - Specs live in [feature-docs/](../feature-docs/); a guide links the spec section it builds.
 
 </dd></dl>
@@ -50,11 +50,11 @@ flowchart LR
 | [S5](S5-issues-markup/README.md) | F08 Issues and before/after · F09 Markup and stamps | 45 | |
 | [S6](S6-reports-plans/README.md) | F10 Reports and audit log · F11 Floor plans and pins | 52 | |
 | [S7](S7-checklists-devices-diagnostics/README.md) | F12 Checklists · F13 DeviceLink · F14 Diagnostics | 47 | Internal testing #2 |
-| [S8](S8-realtime-push-quality/README.md) | F15 Realtime · F16 Push and deep links · F17 Accessibility and performance | 41 | |
+| [S8](S8-realtime-push-quality/README.md) | F15 Realtime · F16 Push and deep links · F17 Accessibility and performance | 38 | |
 | [S9](S9-release/README.md) | F18 UI finish and Google Play | 48 | Google Play |
 
 - Every sprint ends with a build that runs **offline** (Continue offline) and **signed in** (from S1 on).
-- The backend is shared: Android sprints check it; only F16 needs new backend work (FCM).
+- The backend is shared: Android sprints check it; no Android-only backend work.
 - "Second device" in a demo can be an iPhone running the iOS app or another Android phone.
 
 </dd></dl>
