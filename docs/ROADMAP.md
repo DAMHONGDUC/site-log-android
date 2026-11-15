@@ -3,7 +3,7 @@
 <dl><dd>
 
 - Work runs **by sprint**: 2 weeks each, 1 developer, ~50h. Same sprints and feature numbers as iOS.
-- The backend is shared and built in [site-log-be](https://github.com/DAMHONGDUC/site-log-be); Android rows only check it, except the FCM push change (F16.6).
+- The backend is shared and built in [site-log-be](https://github.com/DAMHONGDUC/site-log-be); Android rows only check it.
 - Specs: [feature-docs](feature-docs/); guides: [feature-guide](feature-guide/README.md). This file owns the ticks.
 
 </dd></dl>
@@ -22,7 +22,7 @@
 8. [S5 — Issues and markup](#s5--issues-and-markup--45h)
 9. [S6 — Reports and floor plans](#s6--reports-and-floor-plans--52h)
 10. [S7 — Checklists, DeviceLink, diagnostics · internal testing #2](#s7--checklists-devicelink-diagnostics--internal-testing-2--47h)
-11. [S8 — Realtime, push, accessibility](#s8--realtime-push-accessibility--41h)
+11. [S8 — Realtime, push, accessibility](#s8--realtime-push-accessibility--38h)
 12. [S9 — UI finish and Google Play](#s9--ui-finish-and-google-play--48h)
 13. [Rules](#rules)
 
@@ -69,7 +69,7 @@ flowchart TD
 
 | | |
 |---|---|
-| Total | 10 sprints, 19 features ≈ 467 hours (backend excluded: shared) |
+| Total | 10 sprints, 19 features ≈ 464 hours (backend excluded: shared) |
 | Releases | Play internal testing #1 end of S4, #2 end of S7, Google Play production end of S9 |
 | Goal | Google Play release with the full scope, feature parity with iOS |
 
@@ -298,7 +298,7 @@ flowchart TD
 
 </dd></dl>
 
-## S8 — Realtime, push, accessibility · 41h
+## S8 — Realtime, push, accessibility · 38h
 
 <dl><dd>
 
@@ -314,14 +314,14 @@ flowchart TD
 - [ ] **F15.6** - [Sync] - [8h] - OkHttp WebSocket inside the data source (client · reconnect)
 - [ ] Tests written and green
 
-**F16 — Push and deep links · 14h** · [guide](feature-guide/S8-realtime-push-quality/F16-push-deeplinks.md)
+**F16 — Push and deep links · 11h** · [guide](feature-guide/S8-realtime-push-quality/F16-push-deeplinks.md)
 
-- [ ] **F16.1** - [Contract] - [1h] - FCM data payload, `POST /devices` with `platform: "fcm"`
+- [ ] **F16.1** - [Contract] - [1h] - FCM data payload, `POST /devices` with `platform: "android"`
 - [ ] **F16.2** - [Domain] - [1h] - Deep link parser
 - [ ] **F16.3** - [Fake data] - [1h] - Repository + token data source in memory
 - [ ] **F16.4** - [View models] - [2h] - Notification permission moment, settings row
 - [ ] **F16.5** - [Local] - [4h] - FCM service, channels, `sitelog://` intent filter, router
-- [ ] **F16.6** - [Backend] - [3h] - site-log-be: accept `platform`, send through FCM (new work, agreed with the backend first)
+- [ ] **F16.6** - [Backend] - [0h] - Shared [site-log-be F16](https://github.com/DAMHONGDUC/site-log-be/blob/main/docs/feature-guide/S8-realtime-push/F16-push.md): check an Android token gets a data message
 - [ ] **F16.7** - [Sync] - [2h] - Token sent through `HttpClient`
 - [ ] Tests written and green
 
