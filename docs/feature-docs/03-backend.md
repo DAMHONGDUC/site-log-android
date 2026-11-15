@@ -182,7 +182,7 @@ POST /sync/push { "mutations": [ { "table", "id", "op": "upsert" | "delete", "cl
 |---|---|---|
 | `projects`, `locations`, `sessions` | F03 | `kind` ∈ floor · unit · room; `state` ∈ draft · active · closed · exported (lowercase in JSON, `@SerialName` on enum entries) |
 | `captures` | F05 | Evidence fields frozen after the first push; `latitude`/`longitude` both or neither |
-| `issues`, `issue_captures`, `phrases` | F08 | Pin = `planSheetId` + `pinX` + `pinY` or all `null` |
+| `issues`, `issue_captures`, `phrases` | F08 | `severity` ∈ critical · major · minor; `status` ∈ open · inProgress · resolved · verified (`@SerialName("inProgress")` on `IN_PROGRESS`); pin = `planSheetId` + `pinX` + `pinY` or all `null` |
 | `annotations` | F09 | `id` = capture id; `shapes` is a JSON array (same JSON as iOS) |
 | `report_branding` | F10 | One per user; `accentHex` = `#RRGGBB` |
 | `plan_sheets` | F11 | |
