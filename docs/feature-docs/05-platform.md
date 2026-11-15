@@ -204,7 +204,7 @@ flowchart LR
 
 <dl><dd>
 
-```
+```text
 Session 05 Sep — Ánh Dương Tower
 ████████████░░░░  187/243 files · 1.8 GB / 2.4 GB · ~6 min remaining
 ⚠ 4 waiting: Waiting for Wi-Fi (3) · Waiting for a new upload link (1)
@@ -418,7 +418,10 @@ object DiagnosticsConstants {
 
 <dl><dd>
 
-**Goal:** know the real cost of the upload queue, the socket and capture before testers do; every performance claim has a measurement behind it. Always a real mid-range phone, release build (`profileable`).
+**Goal:** know the real cost of the upload queue, the socket and capture before testers do.
+
+- Every performance claim has a measurement behind it.
+- Always a real mid-range phone, release build (`profileable`).
 
 | Question | Tool |
 |---|---|

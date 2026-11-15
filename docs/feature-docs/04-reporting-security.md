@@ -82,7 +82,7 @@ data class ReportBranding(
 
 - `android.graphics.pdf.PdfDocument` + `Canvas`: no third-party library, no WebView printing.
 
-```
+```text
 Session → SessionSnapshot (one query) → LayOutReportUseCase (:domain, pure) → List<ReportPage>
         → ReportRepositoryImpl maps to List<PdfPageLayout>
         → PdfPageRenderer (:platformkit, one page at a time, bitmaps recycled after each page)

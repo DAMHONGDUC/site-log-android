@@ -54,7 +54,7 @@
 | Bulk generation from a template; cloning a tree from another project | Excel/CAD import |
 | Closing and reopening sessions | |
 
-```
+```text
 Project list → [+] New project → Project detail: [Sessions] [Locations] [Plans]
   → [+] Start session → Survey screen: locations + capture/issue badges
       → Select location → Capture (02) / Checklist (13) / Plan (11)
@@ -125,7 +125,7 @@ object LocationTemplateLimits {
 
 <dl><dd>
 
-```
+```text
 ProcessCameraProvider.bindToLifecycle(owner, selector,
     Preview          → PreviewView (AndroidView) or CameraXViewfinder (camera-compose)
     ImageCapture     → photos (CAPTURE_MODE_MINIMIZE_LATENCY)
@@ -255,7 +255,7 @@ object HashConstants {
 
 <dl><dd>
 
-```
+```text
 Log:     Capture → shoot → [Attach issue] → ModalBottomSheet (description, severity=MAJOR,
          assignee, due, 🎤 dictate · 🔊 voice note · 📍 pin) → Save → back to camera
 Verify:  New session → location → banner "3 open issues from 12 Aug" → issue

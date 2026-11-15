@@ -125,7 +125,7 @@ interface UploadStore {
 
 - Same machine as iOS, in Kotlin; `reduce` is pure and deterministic; `UploadCoordinator` is the only executor of effects.
 
-```
+```text
 pending → planning → uploading ⇄ waitingForURL / waitingForNetwork → completing → synced
                          └────────────► failed (retry budget exhausted only)
 ```
@@ -263,7 +263,7 @@ object UploadConstants {
 
 <dl><dd>
 
-```
+```text
 POST /sync/pull  { since: <rev>, limit }        → { changes: {table: [rows]}, nextRev, hasMore }
 POST /sync/push  { mutations: [{ table, id, op, clientUpdatedAt, fields }] }
                                                 → { results: [{ id, status: applied|superseded|rejected, serverRow? }], serverRev }
@@ -345,7 +345,9 @@ object SyncConstants {
 
 - Module: `:platformkit` `realtime/` ([A04](00-overview.md#a04--websocket-realtime-channel))
 
-**Goal:** learn what the server knows first — assembly done, hash checked, mismatch — without polling. An **observation** channel on OkHttp `WebSocket`; never controls `uploadkit`.
+**Goal:** learn what the server knows first (assembly done, hash checked, mismatch) without polling.
+
+- An **observation** channel on OkHttp `WebSocket`; never controls `uploadkit`.
 
 **Boundary**
 

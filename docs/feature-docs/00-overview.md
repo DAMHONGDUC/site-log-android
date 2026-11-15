@@ -59,7 +59,7 @@
 | Deliverable | Signed PDF inspection report |
 | Users | Site supervisors, subcontractors, apartment handover teams |
 
-```
+```text
 Create project → start session → walk floors/rooms, capture + log issues
 → reach WiFi, background upload → export signed PDF report
 ```
@@ -161,7 +161,7 @@ Create project → start session → walk floors/rooms, capture + log issues
 
 <dl><dd>
 
-```
+```text
 Project
  ├ PlanSheet                                → 11
  ├ ChecklistTemplate                        → 13
@@ -248,7 +248,7 @@ flowchart LR
 
 <dl><dd>
 
-```
+```text
 site-log-android/
 ├── app/
 │   └── src/main/java/com/dd/sitelog/
