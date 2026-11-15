@@ -291,17 +291,16 @@ GET /verify/K7M2QX9HTP      (no token)
 
 <dl><dd>
 
-- **Backend change for Android:** the iOS contract registers APNs tokens only. Android needs the server to accept FCM tokens and send through FCM (Firebase Admin `messaging().send`). Proposed contract — agree it in [site-log-be · 01-api](https://github.com/DAMHONGDUC/site-log-be/blob/main/docs/feature-docs/01-api.md) first:
+- Shared contract: both apps push through Firebase Cloud Messaging ([site-log-be · 01-api §10](https://github.com/DAMHONGDUC/site-log-be/blob/main/docs/feature-docs/01-api.md#10-devices), [B09](https://github.com/DAMHONGDUC/site-log-be/blob/main/docs/feature-docs/00-overview.md#b09--firebase-cloud-messaging-for-push)); no Android-only server work.
 
 ```text
-POST /devices { "token": "<FCM registration token>", "platform": "fcm", "environment": "production" }   → { "registered": true }
-DELETE /devices/:token                                                                                  → { "removed": true }
+POST /devices { "token": "<FCM registration token>", "platform": "android" }   → { "registered": true }
+DELETE /devices/:token                                                       → { "removed": true }
 ```
 
 | Rule | Detail |
 |---|---|
-| `platform` | `"apns"` (iOS, default when missing) or `"fcm"` (Android) |
-| `environment` | Ignored for FCM; send `"production"` |
+| `platform` | `"android"` (iOS sends `"ios"`); the server picks the message shape from it |
 | When | After sign-in, on every `onNewToken`, and remove on sign-out |
 | Payload | FCM **data** message `{ "deepLink": "sitelog://session/<id>", "account": "<uid hash>", "title", "body" }`; the app builds the notification itself so it can drop pushes for another account |
 

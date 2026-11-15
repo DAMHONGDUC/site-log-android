@@ -711,7 +711,7 @@ sealed interface Outcome<out T, out E> {
 <dl><dd>
 
 - **Decision:** the Android app uses the same [site-log-be](https://github.com/DAMHONGDUC/site-log-be) API, sync protocol and Firebase projects as iOS ([iOS D03](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/feature-docs/00-overview.md#d03--node--postgresql-backend-hand-written-sync)). One account works on both platforms.
-- **Consequences:** a contract change is made in site-log-be first, then on both apps; the only Android-specific server change is FCM push ([03 §10](03-backend.md#10-push-registration)).
+- **Consequences:** a contract change is made in site-log-be first, then on both apps; push is shared too: both apps use FCM ([03 §10](03-backend.md#10-push-registration)).
 
 </dd></dl>
 
