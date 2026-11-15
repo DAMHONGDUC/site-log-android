@@ -582,7 +582,7 @@ class SiteLogApplication : Application()
 ---
 
 <b>File</b> · <b class="tag-new">New</b> · `app/src/main/java/com/dd/sitelog/MainActivity.kt`
-The only activity: draws edge to edge and hands the screen to Compose. A `FragmentActivity` (needs `androidx.fragment`) because `BiometricPrompt` (F01) only works with one.
+The only activity: draws edge to edge, hands the screen to Compose; a `FragmentActivity` (needs `androidx.fragment`) because `BiometricPrompt` (F01) needs one.
 
 <details>
 <summary><b>Code</b></summary>
