@@ -2,7 +2,7 @@
 
 <dl><dd>
 
-- Sprint [S8](README.md) · 14h · skeleton guide — full code is added when this feature starts.
+- Sprint [S8](README.md) · 11h · skeleton guide — full code is added when this feature starts.
 - iOS twin: [iOS F16](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/feature-guide/S8-realtime-push-quality/F16-push-deeplinks.md).
 
 </dd></dl>
@@ -41,7 +41,7 @@
 | [3](#3-fake-data--token-data-source-in-memory) | Fake data | 1h | not start | Real `PushRepositoryImpl` |
 | [4](#4-view-models--permission-and-settings) | View models | 2h | not start | Permission moment, settings row |
 | [5](#5-local--fcm-service-intent-filter-router) | Local | 4h | not start | FCM service, channels, intent filter, router |
-| [6](#6-backend--fcm-in-site-log-be) | Backend | 3h | not start | Accept FCM tokens, send through FCM |
+| [6](#6-backend--fcm-in-site-log-be) | Backend | 0h | not start | Shared FCM sender: check only |
 | [7](#7-sync--token-to-the-backend) | Sync | 2h | not start | Token registered through `HttpClient` |
 
 ```mermaid
@@ -75,7 +75,7 @@ app/src/main/AndroidManifest.xml          # intent-filter, service, channels
 <dl><dd>
 
 - Data message: `deepLink`, `account` (uid hash), `title`, `body`.
-- `POST /devices { token, platform: "fcm", environment: "production" }`; `DELETE /devices/:token`.
+- `POST /devices { token, platform: "android" }`; `DELETE /devices/:token`.
 
 </dd></dl>
 
@@ -120,7 +120,8 @@ app/src/main/AndroidManifest.xml          # intent-filter, service, channels
 
 <dl><dd>
 
-- New backend work, agreed in site-log-be's 01-api first: `devices.platform` column (`apns` default, `fcm`), Firebase Admin `messaging().send({ token, data })` for FCM rows, invalid tokens removed on `messaging/registration-token-not-registered`.
+- Built once for both apps in [site-log-be F16](https://github.com/DAMHONGDUC/site-log-be/blob/main/docs/feature-guide/S8-realtime-push/F16-push.md): `devices.platform`, `firebase-admin/messaging`, tokens removed on `messaging/registration-token-not-registered`.
+- **Check:** register an Android token; a verified session sends a data message that opens the session.
 
 </dd></dl>
 

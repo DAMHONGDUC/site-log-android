@@ -2,7 +2,7 @@
 
 <dl><dd>
 
-- Sprint 8 · 2 weeks · 41h · [all sprints](../README.md)
+- Sprint 8 · 2 weeks · 38h · [all sprints](../README.md)
 
 </dd></dl>
 
@@ -28,7 +28,7 @@
 | F | Feature | Guide | Hours |
 |---|---|---|---|
 | F15 | Realtime progress and verification | [F15-realtime.md](F15-realtime.md) | 13 |
-| F16 | Push and deep links | [F16-push-deeplinks.md](F16-push-deeplinks.md) | 14 |
+| F16 | Push and deep links | [F16-push-deeplinks.md](F16-push-deeplinks.md) | 11 |
 | F17 | Accessibility and performance | [F17-accessibility-performance.md](F17-accessibility-performance.md) | 14 |
 
 ```mermaid
@@ -58,7 +58,7 @@ flowchart LR
 | F16.3 | Repository + token data source in memory | Fake data | 1 | not start |
 | F16.4 | Permission moment, notification settings | View models | 2 | not start |
 | F16.5 | FCM service, channels, intent filter, router | Local | 4 | not start |
-| F16.6 | site-log-be: FCM tokens and sending | Backend | 3 | not start |
+| F16.6 | Shared backend: FCM sender | Backend | 0 | not start |
 | F16.7 | Token sent through `HttpClient` | Sync | 2 | not start |
 | F17.1 | Accessibility pass (split: access + projects · capture + issues · reports + settings) | Polish | 8 | not start |
 | F17.2 | Budgets with traces, Baseline Profile, Data safety draft, feedback | Release | 6 | not start |
