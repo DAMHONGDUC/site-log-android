@@ -78,7 +78,8 @@ app/…/presentation/capture/camera/, capturereview/                       # 4
 
 <dl><dd>
 
-- Fields per [03-backend §6.3](../../feature-docs/03-backend.md#63-synced-tables): `id`, `sessionId`, `locationId`, `kind`, `objectKey?`, `sha256`, `byteSize`, `capturedAt`, `trustedTime` (JSON), `latitude?`, `longitude?`, `horizontalAccuracy?`, `deviceModel`, `durationMs?`, `isExcludedFromReport`, sync fields.
+- Fields per [03-backend §6.3](../../feature-docs/03-backend.md#63-synced-tables): `projectId`, `sessionId`, `locationId`, `kind`, `sha256`, `byteSize`, `capturedAt`, `timeConfidence`, `latitude?`, `longitude?`, `horizontalAccuracy?`, `deviceModel`, `durationSeconds?`, `deviceReading?`, `remoteKey?`, `verificationCode?`, `excludedFromReport`, plus `id`, `rev`, `clientUpdatedAt`, `deletedAt`.
+- The mapper converts the domain names: `trustedTime` → `timeConfidence`, `durationMs` → `durationSeconds`, `isExcludedFromReport` → `excludedFromReport`.
 - Extensions from Android: `.jpg`, `.mp4`, `.m4a`.
 
 </dd></dl>
