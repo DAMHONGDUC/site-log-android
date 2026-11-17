@@ -28,7 +28,7 @@
 
 - **Goal:** take every screen from the ~30% skeleton to Figma, on real logic, then release on Google Play.
 - **Demo:** every screen matches Figma side by side in light and dark; the release is rolled out to production.
-- **Specs:** [design plan](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/00-design-plan.md), [mockups](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/mockups/index.html), [compose rules §5](../../compose-rules.md#5-design-system).
+- **Specs:** [design plan](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/00-design-plan.md), [Android screens](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/html/3-android.html), [Figma file](https://www.figma.com/design/uJZcCP6lzw8QTSkcu8uqvV/Site-Log-iOS-Design) (page 03 Android), [compose rules §5](../../compose-rules.md#5-design-system).
 - F18 changes how screens look, never what they do. Figma board ids (S1–S11) name design boards, not sprints.
 
 | Step | Layer | Hours | Status | What |
