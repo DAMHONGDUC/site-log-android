@@ -1295,7 +1295,7 @@ exit "$failed"
 | File | Holds |
 |---|---|
 | `tokens/DSHex.kt` | `0xRRGGBB` → ARGB `Int` (tested) |
-| `tokens/DSColor.kt` | Light and dark palettes from `docs/design/mockups/index.html` `COLOR_TOKENS` |
+| `tokens/DSColor.kt` | Light and dark palettes from iOS `docs/design/html/tokens.js` `COLOR_TOKENS` |
 | `tokens/DSSpacing.kt` | `spacing0` … `spacing52` in `dp` (same names as iOS) |
 | `tokens/DSTextStyle.kt` | The 11 text styles in `sp` ([compose rules §5](../../compose-rules.md#5-design-system)) |
 | `theme/SiteLogTheme.kt` | Picks the palette, provides it, builds the Material `ColorScheme` and `Typography` |
