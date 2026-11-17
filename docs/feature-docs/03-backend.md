@@ -24,6 +24,7 @@
 10. [Push registration](#10-push-registration)
 11. [Shared constants](#11-shared-constants)
 12. [Testing against a local backend](#12-testing-against-a-local-backend)
+13. [Team and roles](#13-team-and-roles)
 
 </dd></dl>
 
@@ -125,7 +126,7 @@ DELETE /account
 
 | Server does | Client rule |
 |---|---|
-| Aborts uploads, deletes objects under `{uid}/`, rows, the Firebase user | Reauthenticate first; show the numbers; then wipe Room, secure store, media, Coil cache |
+| Aborts the caller's uploads, deletes their phrases, devices and the Firebase user; company records stay | Reauthenticate first; say that company records stay; then wipe Room, secure store, media, Coil cache |
 | Safe to repeat | After success any call is `401`: sign out locally |
 
 </dd></dl>
@@ -205,9 +206,9 @@ POST /sync/push { "mutations": [ { "table", "id", "op": "upsert" | "delete", "cl
 
 | File | Key |
 |---|---|
-| Capture | `{uid}/{projectId}/{sessionId}/{captureId}.{jpg·heic·png·mov·mp4·m4a}` |
-| Plan sheet | `{uid}/{projectId}/plans/{sheetId}.{pdf·jpg·png·heic}` |
-| Branding logo | `{uid}/branding/{logoId}.{png·jpg}` |
+| Capture | `projects/{projectId}/{sessionId}/{captureId}.{jpg·heic·png·mov·mp4·m4a}` |
+| Plan sheet | `projects/{projectId}/plans/{sheetId}.{pdf·jpg·png·heic}` |
+| Branding logo | `company/branding/{logoId}.{png·jpg}` |
 
 </dd></dl>
 
@@ -329,5 +330,23 @@ DELETE /devices/:token                                                       →
 - Run the backend on the Mac: [site-log-be · local testing](https://github.com/DAMHONGDUC/site-log-be/blob/main/docs/feature-guide/local-testing-with-ios.md) (same server; only the client address differs).
 - Debug builds allow cleartext HTTP only to `10.0.2.2`, `localhost` and (when used) the Mac's LAN address through `app/src/debug/res/xml/network_security_config.xml`; release builds allow none.
 - A real phone: same Wi-Fi as the Mac, or `adb reverse tcp:3000 tcp:3000` and use `http://localhost:3000`.
+
+</dd></dl>
+
+## 13. Team and roles
+
+<dl><dd>
+
+- One company, four roles (Admin · Manager · Inspector · Viewer), projects shared by their members. Rules: [site-log-be · 05-team-and-roles](https://github.com/DAMHONGDUC/site-log-be/blob/main/docs/feature-docs/05-team-and-roles.md); calls: [site-log-be · 01-api §13](https://github.com/DAMHONGDUC/site-log-be/blob/main/docs/feature-docs/01-api.md#13-team).
+
+| Client rule | Detail |
+|---|---|
+| Who am I | `GET /me` after sign-in, on every app start and after every `resyncRequired`; keep `role` and `projectIds` in the local store |
+| Hide what the role cannot do | Buttons, menus and swipe actions follow the permission table; a Viewer gets a read-only Home, Issues and plan |
+| Never trust only the UI | A `403 forbidden` from the API, or a push result `rejected` with `forbidden:<action>`, drops the action, shows "Not allowed for your role" and logs the code |
+| Sign-in only by invite | `403 not_invited` after sign-in → "Ask an Admin to invite you" screen; sign out locally |
+| Invite link | `https://app.<domain>/invite/<token>` opens the app (Android App Link); sign in, then `POST /invitations/accept { token }`; on success pull from `0` |
+| Access changed | `resyncRequired` after a role or project change: wipe synced data, pull from `0`; projects no longer reachable disappear from the switcher |
+| Who made it | Rows carry `createdBy`; names come from `GET /members` (Admins and Managers) or `GET /me` for yourself; others show "Team member" |
 
 </dd></dl>
