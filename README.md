@@ -36,7 +36,7 @@
 | [04-reporting-security.md](docs/feature-docs/04-reporting-security.md) | 05 PDF and CSV export · 07 Security and audit log |
 | [05-platform.md](docs/feature-docs/05-platform.md) | Dev setup · 09 Diagnostics · Testing · 17 CI/CD · 18 Push and deep links · 19 Profiling |
 | [compose-rules.md](docs/compose-rules.md) | Compose rules: small composables, state, design tokens, strings |
-| Design | Shared with iOS: [design plan](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/00-design-plan.md), [mockups](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/mockups/index.html); Material 3 mapping in [compose-rules §5](docs/compose-rules.md#5-design-system) |
+| Design | Shared with iOS: [design plan](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/00-design-plan.md), [Android screens](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/html/3-android.html), [Figma file](https://www.figma.com/design/uJZcCP6lzw8QTSkcu8uqvV/Site-Log-iOS-Design); Material 3 mapping in [compose-rules §5](docs/compose-rules.md#5-design-system) |
 
 - Docs rule: content sits indented under its title. After editing any `.md`, run `python3 tools/docs/indent-md.py`.
 
