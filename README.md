@@ -18,6 +18,7 @@
 3. [Repo layout](#3-repo-layout)
 4. [iOS → Android map](#4-ios--android-map)
 5. [What is shared, what is not](#5-what-is-shared-what-is-not)
+6. [Design](#6-design)
 
 </dd></dl>
 
@@ -36,7 +37,7 @@
 | [04-reporting-security.md](docs/feature-docs/04-reporting-security.md) | 05 PDF and CSV export · 07 Security and audit log |
 | [05-platform.md](docs/feature-docs/05-platform.md) | Dev setup · 09 Diagnostics · Testing · 17 CI/CD · 18 Push and deep links · 19 Profiling |
 | [compose-rules.md](docs/compose-rules.md) | Compose rules: small composables, state, design tokens, strings |
-| Design | Shared with iOS: [design plan](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/00-design-plan.md), [Android screens](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/html/3-android.html), [Figma file](https://www.figma.com/design/uJZcCP6lzw8QTSkcu8uqvV/Site-Log-iOS-Design); Material 3 mapping in [compose-rules §5](docs/compose-rules.md#5-design-system) |
+| Design | Shared with iOS: HTML pages and Figma links in [§6 Design](#6-design) |
 
 - Docs rule: content sits indented under its title. After editing any `.md`, run `python3 tools/docs/indent-md.py`.
 
@@ -140,5 +141,22 @@ site-log-android/
 | Firebase project (`sitelog-dev`, `sitelog-prod`) | An Android app in each Firebase project, SHA-1/SHA-256 fingerprints |
 | Design plan, mockups, Figma | Material 3 components, 48 dp touch targets |
 | Backend guides in site-log-be | Emulator reaches the Mac at `10.0.2.2`, not `localhost` |
+
+</dd></dl>
+
+## 6. Design
+
+<dl><dd>
+
+- Shared with iOS: the HTML pages and the design plan live in the [iOS repo](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design); Figma: [Site Log iOS Design](https://www.figma.com/design/uJZcCP6lzw8QTSkcu8uqvV/Site-Log-iOS-Design).
+- Open the HTML pages through a local server from a clone of the iOS repo (`python3 -m http.server 8765 --directory docs/design`); GitHub shows only their source.
+
+| Page | HTML (iOS repo) | Figma |
+|---|---|---|
+| 01 Foundations: app icon (adaptive layers), text styles (Inter / JetBrains Mono), colours, spacing | [1-foundations.html](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/html/1-foundations.html) | [01 Foundations](https://www.figma.com/design/uJZcCP6lzw8QTSkcu8uqvV/Site-Log-iOS-Design?node-id=0-1) |
+| 03 Android: 69 screens in Material 3 + 3 dark | [3-android.html](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/html/3-android.html) | [03 Android](https://www.figma.com/design/uJZcCP6lzw8QTSkcu8uqvV/Site-Log-iOS-Design?node-id=54-3) |
+| 05 System design: 21 components, Android beside iOS | [5-system-design.html](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/html/5-system-design.html) | Not imported yet |
+
+- Plan and screen inventory: [00-design-plan.md](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/00-design-plan.md); Figma sync status: [figma-sync](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/figma-sync/README.md); Material 3 mapping: [compose-rules §5](docs/compose-rules.md#5-design-system).
 
 </dd></dl>
