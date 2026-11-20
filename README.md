@@ -154,8 +154,8 @@ site-log-android/
 | Page | HTML (iOS repo) | Figma |
 |---|---|---|
 | 01 Foundations: app icon (adaptive layers), text styles (Inter / JetBrains Mono), colours, spacing | [1-foundations.html](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/html/1-foundations.html) | [01 Foundations](https://www.figma.com/design/uJZcCP6lzw8QTSkcu8uqvV/Site-Log-iOS-Design?node-id=0-1) |
-| 03 Android: 69 screens in Material 3 + 3 dark | [3-android.html](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/html/3-android.html) | [03 Android](https://www.figma.com/design/uJZcCP6lzw8QTSkcu8uqvV/Site-Log-iOS-Design?node-id=54-3) |
-| 05 System design: 21 components, Android beside iOS | [5-system-design.html](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/html/5-system-design.html) | Not imported yet |
+| 03 Android: 79 screens in Material 3 + 3 dark | [3-android.html](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/html/3-android.html) | [03 Android](https://www.figma.com/design/uJZcCP6lzw8QTSkcu8uqvV/Site-Log-iOS-Design?node-id=54-3) |
+| 05 System design: 28 components, Android beside iOS | [5-system-design.html](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/html/5-system-design.html) | Not imported yet |
 
 - Plan and screen inventory: [00-design-plan.md](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/00-design-plan.md); Figma sync status: [figma-sync](https://github.com/DAMHONGDUC/site_log_swift_ui/blob/main/docs/design/figma-sync/README.md); Material 3 mapping: [compose-rules §5](docs/compose-rules.md#5-design-system).
 
