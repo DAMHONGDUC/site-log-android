@@ -39,7 +39,7 @@
 | [1](#1-contract--fcm-payload-and-device-token) | Contract | 1h | not start | Data payload; `POST /devices` with `platform` |
 | [2](#2-domain--deep-link-parser) | Domain | 1h | not start | Pure `DeepLink` parser |
 | [3](#3-fake-data--token-data-source-in-memory) | Fake data | 1h | not start | Real `PushRepositoryImpl` |
-| [4](#4-view-models--permission-and-settings) | View models | 2h | not start | Permission moment, settings row |
+| [4](#4-view-models--permission-and-settings) | View models | 2h | not start | Permission moment (N1, N2), Notifications screen (N4) |
 | [5](#5-local--fcm-service-intent-filter-router) | Local | 4h | not start | FCM service, channels, intent filter, router |
 | [6](#6-backend--fcm-in-site-log-be) | Backend | 0h | not start | Shared FCM sender: check only |
 | [7](#7-sync--token-to-the-backend) | Sync | 2h | not start | Token registered through `HttpClient` |
@@ -99,7 +99,7 @@ app/src/main/AndroidManifest.xml          # intent-filter, service, channels
 
 <dl><dd>
 
-- Ask `POST_NOTIFICATIONS` (API 33+) after the first upload completes, with a card explaining why; Settings row shows the state and links to system settings.
+- Ask `POST_NOTIFICATIONS` (API 33+) on first launch, right after sign-in or Continue offline, with a screen explaining why (N1, then the system dialog N2); You → Notifications (N4) shows the state, links to system settings and has one switch per push kind, sent as `kinds` with `POST /devices`.
 
 </dd></dl>
 
@@ -110,7 +110,7 @@ app/src/main/AndroidManifest.xml          # intent-filter, service, channels
 | Piece | Holds |
 |---|---|
 | Manifest | `MainActivity` `launchMode="singleTop"`, `<intent-filter>` `VIEW` + `DEFAULT` + `BROWSABLE` + `<data android:scheme="sitelog"/>`; `SiteLogMessagingService` `exported="false"` with `com.google.firebase.MESSAGING_EVENT` |
-| Service | `onMessageReceived`: drop if `account` ≠ current user hash; build notification on channel `updates` with a `PendingIntent` (`FLAG_IMMUTABLE`) carrying the URI |
+| Service | `onMessageReceived`: drop if `account` ≠ current user hash; build notification on the channel named by `kind` with a `PendingIntent` (`FLAG_IMMUTABLE`) carrying the URI |
 | Activity | Pass `intent.data` from `onCreate` and `onNewIntent` to `DeepLinkRouter` |
 | Router | `MutableStateFlow<DeepLink?>`; `RootScreen` consumes it after unlock: switch tab, `coordinator.push(route)`, clear |
 
