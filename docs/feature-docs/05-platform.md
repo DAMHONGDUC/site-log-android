@@ -384,12 +384,13 @@ object DiagnosticsConstants {
 **Goal:** a notification tap or a `sitelog://` URI opens the exact session or issue through one shared `DeepLink` type; a link during cold start is not lost.
 
 - Out: rich notifications, App Links (`https://` verified links), push as an upload trigger.
-- Format `sitelog://<route>/<id>` (`session/42`, `issue/7`); wrong scheme, unknown route or missing id is ignored and logged. The parser is pure Kotlin in `:domain`.
+- Format `sitelog://<route>/<id>` (`session/42`, `issue/7`, `project/3`; `project` with `kind: dueSoon` opens its Issues filtered to due tomorrow); wrong scheme, unknown route or missing id is ignored and logged. The parser is pure Kotlin in `:domain`.
 - FCM sends a **data** message with `deepLink`; `SiteLogMessagingService.onMessageReceived` drops it if `account` is not the signed-in user, otherwise posts a notification whose `PendingIntent` opens `MainActivity` with the URI.
-- Permission `POST_NOTIFICATIONS` (API 33+) is requested at a moment that makes sense (after the first upload finishes), not at first launch.
+- Permission `POST_NOTIFICATIONS` (API 33+) is requested on first launch, right after sign-in or Continue offline: the N1 screen explains why, then the system dialog (N2). After two denials Android stops asking; You → Notifications (N4) then shows "Off" and opens the app's system settings.
 - Token: `FirebaseMessaging.getInstance().token`, re-sent in `onNewToken`, logged truncated.
 - Routing: `Intent.data` (from `onCreate` and `onNewIntent`) → parser → `DeepLinkRouter` (holds a pending link in a `StateFlow`) → tab + `<Feature>Route` pushed on that tab's `NavigationCoordinator` ([A19](00-overview.md#a19--feature-routes-and-a-coordinator-per-back-stack)). The router holds the destination until the root consumes it (after unlock), and a deleted target lands on a safe screen.
-- Manifest: `MainActivity` `launchMode="singleTop"` with an `<intent-filter>` for `VIEW` + `BROWSABLE` + `scheme="sitelog"`; `FirebaseMessagingService` declared `exported="false"`; notification channels `uploads` and `updates`.
+- Manifest: `MainActivity` `launchMode="singleTop"` with an `<intent-filter>` for `VIEW` + `BROWSABLE` + `scheme="sitelog"`; `FirebaseMessagingService` declared `exported="false"`; one notification channel per push kind (`uploadsVerified`, `issueAssigned`, `issueRechecked`, `dueSoon`, `access`; [site-log-be 01-api §10](https://github.com/DAMHONGDUC/site-log-be/blob/main/docs/feature-docs/01-api.md#10-devices)).
+- You → Notifications (N4) has one switch per kind; the chosen list is sent as `kinds` with `POST /devices`, so each device keeps its own choices. F16 ships only `uploadsVerified` (one switch); the other kinds and `kinds` arrive with F19.
 
 **Risks**
 
