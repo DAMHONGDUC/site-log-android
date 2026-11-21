@@ -36,6 +36,7 @@
 | [03-backend.md](docs/feature-docs/03-backend.md) | 14 Backend API: what the Android app calls and how |
 | [04-reporting-security.md](docs/feature-docs/04-reporting-security.md) | 05 PDF and CSV export · 07 Security and audit log |
 | [05-platform.md](docs/feature-docs/05-platform.md) | Dev setup · 09 Diagnostics · Testing · 17 CI/CD · 18 Push and deep links · 19 Profiling |
+| [06-navigation.md](docs/feature-docs/06-navigation.md) | Navigation map: root states, tabs, every route, sheets and dialogs, deep links |
 | [compose-rules.md](docs/compose-rules.md) | Compose rules: small composables, state, design tokens, strings |
 | Design | Shared with iOS: HTML pages and Figma links in [§6 Design](#6-design) |
 
