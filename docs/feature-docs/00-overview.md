@@ -625,6 +625,7 @@ sealed interface Outcome<out T, out E> {
 | [03-backend.md](03-backend.md) | 14 Backend API (Android client guide) |
 | [04-reporting-security.md](04-reporting-security.md) | 05 PDF and spreadsheet export · 07 Security and audit log |
 | [05-platform.md](05-platform.md) | Dev setup · 09 Diagnostics · Testing · 17 CI/CD · 18 Push and deep links · 19 Profiling |
+| [06-navigation.md](06-navigation.md) | Navigation map: root states, tabs, routes, sheets, deep links |
 
 </dd></dl>
 
@@ -912,6 +913,7 @@ sealed interface Outcome<out T, out E> {
 
 - **Decision:** each feature owns `<Feature>Route` (ids only) and `<feature>Entries()` (route → screen) in `presentation/<feature>/<Feature>Route.kt`. One `NavigationCoordinator` per tab back stack; `CoordinatedStack` creates it and provides it through `LocalNavigationCoordinator`.
 - **Consequences:** deep links (F16) map a URI to a tab and a route, then push on that tab's coordinator; a bottom sheet that opens a full screen dismisses itself first.
+- Every screen's place (root state, tab, route, sheet) and every deep link: [06-navigation](06-navigation.md).
 
 </dd></dl>
 
