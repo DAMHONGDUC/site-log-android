@@ -167,6 +167,8 @@
 29. **Names by meaning:** `isLoading`, `onSaveClick()`. Never `flag1`, `handle()`.
 30. **detekt + ktlint + Lint in CI**, zero warnings.
 31. **Dark theme and accessibility from day one:** `contentDescription` on every icon button, `Modifier.semantics { heading() }` on titles, 48 dp targets, no information by color alone.
+32. **Comments say why:** inside code at most 2 lines, a KDoc at most 3.
+33. **Blank lines:** one after the variable declarations, one before every `return` unless it opens its block.
 
 </dd></dl>
 
